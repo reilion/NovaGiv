@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { MOCK_MEDIA } from "@/lib/mock-data";
+import { toOkRuEmbedUrl } from "@/lib/okru";
 import { createClient } from "@/lib/supabase/server";
 import type { MediaStatus, MediaType } from "@/types/media";
 
@@ -69,7 +70,7 @@ export async function upsertMediaItem(input: MediaFormInput): Promise<ActionResu
     year: input.year ?? null,
     description: input.description?.trim() || null,
     duration: input.duration?.trim() || null,
-    okru_embed_url: input.okRuEmbedUrl?.trim() || null,
+    okru_embed_url: input.okRuEmbedUrl?.trim() ? toOkRuEmbedUrl(input.okRuEmbedUrl.trim()) : null,
     status: input.status ?? null,
     rating: input.rating ?? null,
   };
@@ -103,7 +104,7 @@ export async function upsertMediaItem(input: MediaFormInput): Promise<ActionResu
       episode_number: episode.episodeNumber,
       season_number: episode.seasonNumber ?? null,
       title: episode.title.trim(),
-      okru_embed_url: episode.okRuEmbedUrl.trim(),
+      okru_embed_url: toOkRuEmbedUrl(episode.okRuEmbedUrl.trim()),
       duration: episode.duration?.trim() || null,
     }));
     const { error: episodesError } = await supabase.from("episodes").insert(episodeRows);

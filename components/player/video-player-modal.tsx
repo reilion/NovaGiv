@@ -13,6 +13,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { toOkRuEmbedUrl } from "@/lib/okru";
 import { cn } from "@/lib/utils";
 import { isEpisodic, type Episode, type MediaItem } from "@/types/media";
 
@@ -49,7 +50,8 @@ function PlayerContent({ item }: { item: MediaItem }) {
 
   const activeEpisode =
     (item.episodes ?? []).find((episode) => episode.id === activeEpisodeId) ?? item.episodes?.[0];
-  const embedUrl = episodic ? activeEpisode?.okRuEmbedUrl : item.okRuEmbedUrl;
+  const rawEmbedUrl = episodic ? activeEpisode?.okRuEmbedUrl : item.okRuEmbedUrl;
+  const embedUrl = rawEmbedUrl ? toOkRuEmbedUrl(rawEmbedUrl) : undefined;
 
   return (
     <DialogContent className="max-w-5xl gap-0 overflow-hidden p-0 sm:max-w-5xl" showCloseButton>

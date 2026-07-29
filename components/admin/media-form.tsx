@@ -330,6 +330,7 @@ export function MediaForm({ item }: MediaFormProps) {
                     <Field
                       label="URL de embed (ok.ru)"
                       htmlFor={`embed-${episode.key}`}
+                      hint="Si pegas el enlace normal (ok.ru/video/...) se convierte solo al guardar."
                       className="flex-1"
                     >
                       <Input
@@ -380,7 +381,11 @@ export function MediaForm({ item }: MediaFormProps) {
                 placeholder="1h 52m"
               />
             </Field>
-            <Field label="URL de embed (ok.ru)" htmlFor="okRuEmbedUrl">
+            <Field
+              label="URL de embed (ok.ru)"
+              htmlFor="okRuEmbedUrl"
+              hint="Si pegas el enlace normal (ok.ru/video/...) se convierte solo al guardar."
+            >
               <Input
                 id="okRuEmbedUrl"
                 value={okRuEmbedUrl}

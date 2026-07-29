@@ -1,5 +1,6 @@
-import type { MediaItem, MediaType, SortOption } from "@/types/media";
+import { normalizeSearch } from "@/lib/text";
 import type { SearchParamsRecord } from "@/lib/url";
+import type { MediaItem, MediaType, SortOption } from "@/types/media";
 
 export interface FilterParams {
   type: MediaType | "all";
@@ -22,33 +23,16 @@ export function parseFilterParams(searchParams: SearchParamsRecord): FilterParam
   };
 }
 
-const ACCENTED_CHARS: Record<string, string> = {
-  á: "a",
-  é: "e",
-  í: "i",
-  ó: "o",
-  ú: "u",
-  ü: "u",
-  ñ: "n",
-};
-
-/** Strips Spanish accents so "codigo" matches "Código" in the search box. */
-function normalize(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[áéíóúüñ]/g, (char) => ACCENTED_CHARS[char] ?? char);
-}
-
 export function filterAndSortMedia(
   items: MediaItem[],
   { type, search, genre, sort }: FilterParams
 ): MediaItem[] {
-  const query = normalize(search.trim());
+  const query = normalizeSearch(search.trim());
 
   const filtered = items.filter((item) => {
     const matchesType = type === "all" || item.type === type;
     const matchesGenre = genre === "all" || item.genres.includes(genre);
-    const matchesSearch = query === "" || normalize(item.title).includes(query);
+    const matchesSearch = query === "" || normalizeSearch(item.title).includes(query);
     return matchesType && matchesGenre && matchesSearch;
   });
 

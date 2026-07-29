@@ -10,6 +10,10 @@ const nextConfig: NextConfig = {
       // Ok.ru thumbnail CDN.
       { protocol: "https", hostname: "i.mycdn.me" },
       { protocol: "https", hostname: "*.mycdn.me" },
+      // IMDb poster CDN (m.media-amazon.com).
+      { protocol: "https", hostname: "m.media-amazon.com" },
+      // TMDB poster CDN, another common poster source.
+      { protocol: "https", hostname: "image.tmdb.org" },
     ],
   },
 };

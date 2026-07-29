@@ -44,3 +44,18 @@ create policy "Public read access on media_items"
 create policy "Public read access on episodes"
   on episodes for select
   using (true);
+
+-- Admin panel (app/admin): any authenticated Supabase user can manage the
+-- catalog. There is only ever one admin account (see README), so a broad
+-- "authenticated" policy is enough — no per-row ownership to check.
+create policy "Authenticated write access on media_items"
+  on media_items for all
+  to authenticated
+  using (true)
+  with check (true);
+
+create policy "Authenticated write access on episodes"
+  on episodes for all
+  to authenticated
+  using (true)
+  with check (true);

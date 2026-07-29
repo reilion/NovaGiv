@@ -10,7 +10,7 @@ import type { StreamerProfile } from "@/types/streamer";
 export const MOCK_STREAMER: StreamerProfile = {
   name: "NovaGiv",
   handle: "@novagiv",
-  avatarUrl: "https://picsum.photos/seed/novagiv-avatar/200/200",
+  avatarUrl: "https://static-cdn.jtvnw.net/jtv_user_pictures/a11aa1f7-c873-4023-b481-698b07ed8d94-profile_image-70x70.png",
   bannerUrl: "https://picsum.photos/seed/novagiv-banner/1600/400",
   isLive: true,
   liveTitle: "Maratón de anime + karaoke nocturno",
@@ -18,7 +18,7 @@ export const MOCK_STREAMER: StreamerProfile = {
   socials: [
     { platform: "twitch", url: "https://twitch.tv/novagiv" },
     { platform: "youtube", url: "https://youtube.com/@novagiv" },
-    { platform: "website", url: "https://novagiv.com" },
+    { platform: "website", url: "https://novagiv.vercel.app/" },
     { platform: "discord", url: "https://discord.gg/novagiv" },
     { platform: "x", url: "https://x.com/novagiv" },
   ],

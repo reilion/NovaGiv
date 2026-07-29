@@ -5,7 +5,7 @@ import { MOCK_MEDIA, MOCK_STREAMER } from "@/lib/mock-data";
 import type { Episode, MediaItem } from "@/types/media";
 import type { StreamerProfile } from "@/types/streamer";
 
-const isSupabaseConfigured = Boolean(
+export const isSupabaseConfigured = Boolean(
   process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 );
 
@@ -104,6 +104,27 @@ export async function getMediaBySlug(slug: string): Promise<MediaItem | null> {
 
   if (error || !data) {
     if (error) console.error("getMediaBySlug error —", error.message);
+    return null;
+  }
+
+  return mapMediaItem(data as MediaItemRow);
+}
+
+/** Single item by primary key, used by the admin edit form. */
+export async function getMediaItemById(id: string): Promise<MediaItem | null> {
+  if (!isSupabaseConfigured) {
+    return MOCK_MEDIA.find((item) => item.id === id) ?? null;
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("media_items")
+    .select("*, episodes(*)")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error || !data) {
+    if (error) console.error("getMediaItemById error —", error.message);
     return null;
   }
 

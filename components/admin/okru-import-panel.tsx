@@ -3,9 +3,10 @@
 /* eslint-disable @next/next/no-img-element -- admin-only preview of remote ok.ru thumbnails, no next/image needed here */
 
 import { useState, useTransition } from "react";
-import { Loader2, RefreshCw } from "lucide-react";
+import { KeyRound, Loader2, RefreshCw } from "lucide-react";
 
 import { MediaForm } from "@/components/admin/media-form";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -18,7 +19,7 @@ import { cn } from "@/lib/utils";
 
 const DEFAULT_CHANNELS_URL = "https://ok.ru/profile/597703328549/video/channels";
 
-export function OkRuImportPanel() {
+export function OkRuImportPanel({ hasSession }: { hasSession: boolean }) {
   const [channelsUrl, setChannelsUrl] = useState(DEFAULT_CHANNELS_URL);
   const [channels, setChannels] = useState<OkRuChannel[] | null>(null);
   const [channelsError, setChannelsError] = useState<string | null>(null);
@@ -56,10 +57,19 @@ export function OkRuImportPanel() {
     <div className="flex flex-col gap-6">
       <Card>
         <CardHeader>
-          <CardTitle>1. Canales de ok.ru</CardTitle>
+          <div className="flex items-center justify-between gap-2">
+            <CardTitle>1. Canales de ok.ru</CardTitle>
+            <Badge variant={hasSession ? "default" : "outline"} className="gap-1">
+              <KeyRound className="size-3" />
+              {hasSession ? "Con tu sesión" : "Sin sesión"}
+            </Badge>
+          </div>
           <CardDescription>
             Cada canal del perfil se importa como una colección aparte (serie, anime o
-            especial). Solo lee la página pública — no necesita iniciar sesión en ok.ru.
+            especial).{" "}
+            {hasSession
+              ? "Usando tu cookie de ok.ru: también verás canales privados/solo amigos."
+              : "Solo lee la página pública, así que los canales privados o solo-amigos no aparecerán (configura OKRU_COOKIE en .env.local para verlos)."}
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">

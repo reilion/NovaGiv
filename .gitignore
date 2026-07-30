@@ -37,6 +37,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# cookie exports (ok.ru session, etc.) — never commit these
+cookies.json
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

@@ -1,4 +1,5 @@
 import { OkRuImportPanel } from "@/components/admin/okru-import-panel";
+import { hasOkRuSession } from "@/lib/okru-scraper";
 
 export const metadata = {
   title: "Importar de ok.ru | NovaGiv Admin",
@@ -14,7 +15,7 @@ export default function ImportPage() {
           guardan como borrador — no aparecen en la página hasta que los publiques.
         </p>
       </div>
-      <OkRuImportPanel />
+      <OkRuImportPanel hasSession={hasOkRuSession} />
     </div>
   );
 }

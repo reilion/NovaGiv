@@ -13,6 +13,16 @@ import * as cheerio from "cheerio";
 const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
+/**
+ * Optional session cookie (copied from the admin's own logged-in browser) so
+ * scraping runs as the profile owner and picks up friends-only/private
+ * channels — anonymous requests only see fully public ones. Server-only env
+ * var, never sent to the browser. See README for how to obtain it.
+ */
+const OKRU_COOKIE = process.env.OKRU_COOKIE;
+
+export const hasOkRuSession = Boolean(OKRU_COOKIE);
+
 export interface OkRuChannel {
   id: string;
   name: string;
@@ -49,6 +59,7 @@ async function fetchOkRuHtml(rawUrl: string): Promise<string> {
     headers: {
       "User-Agent": USER_AGENT,
       "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
+      ...(OKRU_COOKIE ? { Cookie: OKRU_COOKIE } : {}),
     },
     cache: "no-store",
   });
@@ -96,7 +107,9 @@ export async function fetchOkRuChannels(channelsUrl: string): Promise<OkRuChanne
     const $card = $(el);
     const link = $card.find('a[href*="/video/c"]').first();
     const href = link.attr("href");
-    const match = href?.match(/\/video\/(c\d+)$/);
+    // Logged-in responses append tracking params (?st.cmd=…), so the id is not
+    // necessarily at the end of the href.
+    const match = href?.match(/\/video\/(c\d+)(?:[?#]|$)/);
     if (!match) return;
 
     const id = match[1];
@@ -110,10 +123,13 @@ export async function fetchOkRuChannels(channelsUrl: string): Promise<OkRuChanne
     const videoCountText = infoTexts[1] ?? infoTexts[0];
     const videoCountMatch = videoCountText?.match(/(\d+)/);
 
+    // Drop the tracking query string so we request the plain album page.
+    const resolved = new URL(href!, "https://ok.ru");
+
     channels.push({
       id,
       name,
-      url: new URL(href!, "https://ok.ru").toString(),
+      url: `${resolved.origin}${resolved.pathname}`,
       thumbnailUrl,
       videoCount: videoCountMatch ? Number(videoCountMatch[1]) : undefined,
     });

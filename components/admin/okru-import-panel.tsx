@@ -73,6 +73,14 @@ export function OkRuImportPanel({ hasSession }: { hasSession: boolean }) {
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
+          <div className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+            <strong className="text-foreground">Límite de esta pantalla:</strong> ok.ru
+            entrega sus listas de 20 en 20 y pide un token que solo genera su JavaScript,
+            así que aquí verás como máximo 20 canales y 20 videos por canal. Para importar
+            el catálogo completo ejecuta <code>pnpm okru:sync</code> en tu PC: recorre todos
+            los canales y sus videos y los deja como borradores en este panel.
+          </div>
+
           <div className="flex flex-col gap-2 sm:flex-row">
             <Input
               value={channelsUrl}
@@ -156,6 +164,15 @@ export function OkRuImportPanel({ hasSession }: { hasSession: boolean }) {
                 que falte abajo — el título se guarda como borrador hasta que lo publiques.
               </p>
             )}
+            {videos &&
+              typeof selectedChannel.videoCount === "number" &&
+              videos.length < selectedChannel.videoCount && (
+                <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                  Este canal tiene {selectedChannel.videoCount} videos en ok.ru pero aquí solo
+                  se pudieron leer {videos.length}. Usa <code>pnpm okru:sync</code> para traerlo
+                  completo.
+                </p>
+              )}
           </CardContent>
         </Card>
       )}

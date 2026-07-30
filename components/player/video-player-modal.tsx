@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { PlayCircle } from "lucide-react";
+import { CalendarDays, PlayCircle } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import {
@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { toOkRuEmbedUrl } from "@/lib/okru";
+import { formatStreamDate, formatStreamRange } from "@/lib/stream-date";
 import { cn } from "@/lib/utils";
 import { isEpisodic, type Episode, type MediaItem } from "@/types/media";
 
@@ -52,6 +53,7 @@ function PlayerContent({ item }: { item: MediaItem }) {
     (item.episodes ?? []).find((episode) => episode.id === activeEpisodeId) ?? item.episodes?.[0];
   const rawEmbedUrl = episodic ? activeEpisode?.okRuEmbedUrl : item.okRuEmbedUrl;
   const embedUrl = rawEmbedUrl ? toOkRuEmbedUrl(rawEmbedUrl) : undefined;
+  const streamRange = formatStreamRange(item.firstStreamedAt, item.lastStreamedAt);
 
   return (
     <DialogContent className="max-w-5xl gap-0 overflow-hidden p-0 sm:max-w-5xl" showCloseButton>
@@ -94,6 +96,12 @@ function PlayerContent({ item }: { item: MediaItem }) {
                 </Badge>
               ))}
               {item.year && <Badge variant="secondary">{item.year}</Badge>}
+              {streamRange && (
+                <Badge variant="secondary" className="gap-1">
+                  <CalendarDays className="size-3" />
+                  {streamRange}
+                </Badge>
+              )}
             </div>
             {item.description && (
               <DialogDescription className="text-sm">{item.description}</DialogDescription>
@@ -124,8 +132,15 @@ function PlayerContent({ item }: { item: MediaItem }) {
                         )}
                       >
                         <PlayCircle className="size-4 shrink-0" />
-                        <span className="flex-1 truncate">
-                          {episode.episodeNumber}. {episode.title}
+                        <span className="flex min-w-0 flex-1 flex-col">
+                          <span className="truncate">
+                            {episode.episodeNumber}. {episode.title}
+                          </span>
+                          {episode.streamedAt && (
+                            <span className="truncate text-xs text-muted-foreground">
+                              {formatStreamDate(episode.streamedAt)}
+                            </span>
+                          )}
                         </span>
                         {episode.duration && (
                           <span className="shrink-0 text-xs text-muted-foreground">

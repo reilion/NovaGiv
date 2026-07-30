@@ -190,6 +190,7 @@ export function OkRuImportPanel({ hasSession }: { hasSession: boolean }) {
               title: video.title,
               okRuEmbedUrl: video.embedUrl,
               duration: video.duration,
+              streamedAt: video.streamedAt,
             })),
           }}
         />

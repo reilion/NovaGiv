@@ -1,9 +1,10 @@
 import Image from "next/image";
 import Link from "next/link";
-import { Clock, Layers, Play } from "lucide-react";
+import { CalendarDays, Clock, Layers, Play } from "lucide-react";
 
 import { AspectRatio } from "@/components/ui/aspect-ratio";
 import { Badge } from "@/components/ui/badge";
+import { formatStreamRange } from "@/lib/stream-date";
 import { buildQueryString, type SearchParamsRecord } from "@/lib/url";
 import { isEpisodic, MEDIA_STATUS_LABELS, type MediaItem } from "@/types/media";
 
@@ -23,6 +24,7 @@ export function MediaCard({ item, currentParams }: MediaCardProps) {
   const episodic = isEpisodic(item.type);
   const episodeCount = item.episodes?.length ?? 0;
   const href = `?${buildQueryString(currentParams, { play: item.slug })}`;
+  const streamRange = formatStreamRange(item.firstStreamedAt, item.lastStreamedAt);
 
   return (
     <Link
@@ -82,11 +84,17 @@ export function MediaCard({ item, currentParams }: MediaCardProps) {
           {item.year && <span>{item.year}</span>}
           {episodic && item.status && (
             <>
-              <span aria-hidden>·</span>
+              {item.year && <span aria-hidden>·</span>}
               <span>{MEDIA_STATUS_LABELS[item.status]}</span>
             </>
           )}
         </div>
+        {streamRange && (
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            <CalendarDays className="size-3 shrink-0" />
+            <span className="truncate">{streamRange}</span>
+          </div>
+        )}
       </div>
     </Link>
   );

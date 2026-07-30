@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 
-import { FilterBar } from "@/components/filters/filter-bar";
+import { FilterBarContainer } from "@/components/filters/filter-bar-container";
 import { FilterBarSkeleton } from "@/components/filters/filter-bar-skeleton";
 import { CatalogSection } from "@/components/media/catalog-section";
 import { MediaGridSkeleton } from "@/components/media/media-grid-skeleton";
@@ -28,7 +28,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
 
       <main className="mx-auto w-full max-w-7xl flex-1 px-4 sm:px-6 lg:px-8">
         <Suspense fallback={<FilterBarSkeleton />}>
-          <FilterBar />
+          <FilterBarContainer />
         </Suspense>
 
         <Suspense key={suspenseKey} fallback={<MediaGridSkeleton />}>

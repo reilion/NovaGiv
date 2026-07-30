@@ -1,5 +1,7 @@
 import "server-only";
 
+import { cache } from "react";
+
 import { createClient } from "@/lib/supabase/server";
 import { MOCK_MEDIA, MOCK_STREAMER } from "@/lib/mock-data";
 import type { Episode, MediaItem } from "@/types/media";
@@ -17,6 +19,7 @@ interface EpisodeRow {
   okru_embed_url: string;
   duration: string | null;
   thumbnail_url: string | null;
+  streamed_at: string | null;
 }
 
 interface MediaItemRow {
@@ -33,6 +36,8 @@ interface MediaItemRow {
   status: MediaItem["status"] | null;
   rating: number | null;
   published: boolean;
+  first_streamed_at: string | null;
+  last_streamed_at: string | null;
   created_at: string;
   episodes: EpisodeRow[] | null;
 }
@@ -46,6 +51,9 @@ function mapEpisode(row: EpisodeRow): Episode {
     okRuEmbedUrl: row.okru_embed_url,
     duration: row.duration ?? undefined,
     thumbnailUrl: row.thumbnail_url ?? undefined,
+    // Postgres returns "2026-07-28T00:19:09" for `timestamp` columns; keep it
+    // as a plain string so no timezone conversion ever happens.
+    streamedAt: row.streamed_at ?? undefined,
   };
 }
 
@@ -64,6 +72,8 @@ function mapMediaItem(row: MediaItemRow): MediaItem {
     status: row.status ?? undefined,
     rating: row.rating ?? undefined,
     published: row.published,
+    firstStreamedAt: row.first_streamed_at ?? undefined,
+    lastStreamedAt: row.last_streamed_at ?? undefined,
     createdAt: row.created_at,
     episodes: row.episodes?.length
       ? row.episodes
@@ -73,8 +83,14 @@ function mapMediaItem(row: MediaItemRow): MediaItem {
   };
 }
 
-/** Published catalog items, newest first — what the public site shows. Falls back to local demo data until Supabase env vars are set. */
-export async function getMediaItems(): Promise<MediaItem[]> {
+/**
+ * Published catalog items, newest first — what the public site shows. Falls
+ * back to local demo data until Supabase env vars are set.
+ *
+ * Wrapped in React `cache` so the page and its Suspense children can each ask
+ * for the catalog without issuing duplicate queries per request.
+ */
+export const getMediaItems = cache(async function getMediaItems(): Promise<MediaItem[]> {
   if (!isSupabaseConfigured) return MOCK_MEDIA.filter((item) => item.published !== false);
 
   const supabase = await createClient();
@@ -90,7 +106,7 @@ export async function getMediaItems(): Promise<MediaItem[]> {
   }
 
   return (data as MediaItemRow[]).map(mapMediaItem);
-}
+});
 
 /**
  * Every catalog item regardless of published state — for the admin

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Trash2 } from "lucide-react";
 
@@ -17,6 +17,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { type EpisodeInput, upsertMediaItem } from "@/lib/actions/media";
+import { formatStreamRange } from "@/lib/stream-date";
 import { slugify } from "@/lib/text";
 import { cn } from "@/lib/utils";
 import {
@@ -84,6 +85,7 @@ export function MediaForm({ item, initialValues }: MediaFormProps) {
         title: episode.title,
         okRuEmbedUrl: episode.okRuEmbedUrl,
         duration: episode.duration,
+        streamedAt: episode.streamedAt,
       }));
     }
     if (initialValues?.episodes) {
@@ -94,12 +96,23 @@ export function MediaForm({ item, initialValues }: MediaFormProps) {
         title: episode.title,
         okRuEmbedUrl: episode.okRuEmbedUrl,
         duration: episode.duration,
+        streamedAt: episode.streamedAt,
       }));
     }
     return [];
   });
 
   const episodic = isEpisodic(type);
+
+  // Mirrors what upsertMediaItem derives, so the admin sees the range that
+  // will actually be stored.
+  const streamRange = useMemo(() => {
+    const dates = episodes
+      .map((episode) => episode.streamedAt?.trim())
+      .filter((value): value is string => Boolean(value))
+      .sort();
+    return formatStreamRange(dates[0], dates[dates.length - 1]);
+  }, [episodes]);
 
   function handleTitleChange(value: string) {
     setTitle(value);
@@ -171,6 +184,7 @@ export function MediaForm({ item, initialValues }: MediaFormProps) {
               title: episode.title,
               okRuEmbedUrl: episode.okRuEmbedUrl,
               duration: episode.duration,
+              streamedAt: episode.streamedAt,
             }))
           : [],
       });
@@ -296,6 +310,13 @@ export function MediaForm({ item, initialValues }: MediaFormProps) {
             <CardDescription>
               Se agrupan automáticamente por temporada en el reproductor. Deja el número
               de temporada vacío si el título tiene una sola.
+              {streamRange && (
+                <>
+                  {" "}
+                  Rango de emisión (calculado desde las fechas de abajo):{" "}
+                  <strong className="text-foreground">{streamRange}</strong>.
+                </>
+              )}
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
@@ -362,6 +383,20 @@ export function MediaForm({ item, initialValues }: MediaFormProps) {
                         updateEpisode(episode.key, { duration: event.target.value })
                       }
                       placeholder="24m"
+                    />
+                  </Field>
+                  <Field label="Fecha del stream" htmlFor={`streamed-${episode.key}`}>
+                    <Input
+                      id={`streamed-${episode.key}`}
+                      type="date"
+                      // The stored value may carry a time; the date input only
+                      // accepts YYYY-MM-DD, so show/keep just the day part.
+                      value={episode.streamedAt?.slice(0, 10) ?? ""}
+                      onChange={(event) =>
+                        updateEpisode(episode.key, {
+                          streamedAt: event.target.value || undefined,
+                        })
+                      }
                     />
                   </Field>
                   <div className="flex items-end justify-between gap-2 sm:col-span-6">

@@ -14,6 +14,8 @@ export interface EpisodeInput {
   title: string;
   okRuEmbedUrl: string;
   duration?: string;
+  /** "YYYY-MM-DD" or "YYYY-MM-DDTHH:MM:SS"; drives the collection's date range. */
+  streamedAt?: string;
 }
 
 export interface MediaFormInput {
@@ -51,6 +53,14 @@ export async function upsertMediaItem(input: MediaFormInput): Promise<ActionResu
     return { error: "La URL del póster es obligatoria." };
   }
 
+  // Kept derived rather than hand-entered so the range can never drift from
+  // the episodes it summarises. Values are "YYYY-MM-DD..." strings, so
+  // lexicographic comparison is chronological.
+  const streamDates = input.episodes
+    .map((episode) => episode.streamedAt?.trim())
+    .filter((value): value is string => Boolean(value))
+    .sort();
+
   const row = {
     title,
     slug,
@@ -64,6 +74,8 @@ export async function upsertMediaItem(input: MediaFormInput): Promise<ActionResu
     status: input.status ?? null,
     rating: input.rating ?? null,
     published: input.published,
+    first_streamed_at: streamDates[0] ?? null,
+    last_streamed_at: streamDates[streamDates.length - 1] ?? null,
   };
 
   let mediaItemId = input.id;
@@ -97,6 +109,7 @@ export async function upsertMediaItem(input: MediaFormInput): Promise<ActionResu
       title: episode.title.trim(),
       okru_embed_url: toOkRuEmbedUrl(episode.okRuEmbedUrl.trim()),
       duration: episode.duration?.trim() || null,
+      streamed_at: episode.streamedAt?.trim() || null,
     }));
     const { error: episodesError } = await supabase.from("episodes").insert(episodeRows);
     if (episodesError) return { error: episodesError.message };
@@ -159,6 +172,8 @@ export async function seedMockData(): Promise<ActionResult> {
       status: item.status ?? null,
       rating: item.rating ?? null,
       published: item.published !== false,
+      first_streamed_at: item.firstStreamedAt ?? null,
+      last_streamed_at: item.lastStreamedAt ?? null,
       created_at: item.createdAt,
     };
 
@@ -187,6 +202,7 @@ export async function seedMockData(): Promise<ActionResult> {
         title: episode.title,
         okru_embed_url: episode.okRuEmbedUrl,
         duration: episode.duration ?? null,
+        streamed_at: episode.streamedAt ?? null,
       }));
       const { error } = await supabase.from("episodes").insert(episodeRows);
       if (error) return { error: error.message };

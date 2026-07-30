@@ -2,6 +2,8 @@ import "server-only";
 
 import * as cheerio from "cheerio";
 
+import { formatStreamDate, parseStreamTitle } from "@/lib/stream-date";
+
 /**
  * Scrapes the streamer's own public ok.ru profile (channels + the videos in
  * each channel) so the admin can turn them into draft collections instead of
@@ -37,6 +39,8 @@ export interface OkRuVideo {
   duration?: string;
   thumbnailUrl?: string;
   embedUrl: string;
+  /** Parsed from the ok.ru title, which usually encodes the stream date. */
+  streamedAt?: string;
 }
 
 function assertOkRuUrl(rawUrl: string): URL {
@@ -150,20 +154,32 @@ export async function fetchOkRuChannelVideos(channelUrl: string): Promise<OkRuVi
     if (!id) return;
 
     const titleEl = $card.find(".video-card_n").first();
-    const title = titleEl.attr("title")?.trim() || titleEl.text().trim() || id;
+    const rawTitle = titleEl.attr("title")?.trim() || titleEl.text().trim() || id;
     const durationRaw = $card.find(".video-card_duration").first().text().trim();
     const thumbnailUrl = $card.find("img.video-card_img").first().attr("src");
 
+    const { streamedAt, cleanTitle } = parseStreamTitle(rawTitle);
+
     videos.push({
       id,
-      title,
+      // Titles that are only a date become "13 julio 2024"; ones like
+      // "H2011 del 132 al 136 2024-07-13 …" keep the meaningful part.
+      title: cleanTitle || formatStreamDate(streamedAt) || rawTitle,
       duration: durationRaw ? formatOkRuDuration(durationRaw) : undefined,
       thumbnailUrl,
       embedUrl: toOkRuVideoEmbedUrl(id),
+      streamedAt,
     });
   });
 
-  // ok.ru lists newest first; video IDs are assigned in upload order and can
-  // exceed Number.MAX_SAFE_INTEGER, so compare as BigInt rather than Number.
-  return videos.sort((a, b) => (BigInt(a.id) < BigInt(b.id) ? -1 : 1));
+  // Chronological by stream date when known, else by video id (assigned in
+  // upload order, and large enough to require BigInt).
+  return videos.sort((a, b) => {
+    if (a.streamedAt && b.streamedAt) {
+      if (a.streamedAt !== b.streamedAt) return a.streamedAt < b.streamedAt ? -1 : 1;
+    } else if (a.streamedAt || b.streamedAt) {
+      return a.streamedAt ? -1 : 1;
+    }
+    return BigInt(a.id) < BigInt(b.id) ? -1 : 1;
+  });
 }

@@ -16,7 +16,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FILTER_TABS, GENRES, SORT_OPTIONS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
-export function FilterBar() {
+export function FilterBar({ streamYears = [] }: { streamYears?: number[] }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -25,6 +25,7 @@ export function FilterBar() {
   const activeTab = searchParams.get("tab") ?? "all";
   const activeGenre = searchParams.get("genre") ?? "all";
   const activeSort = searchParams.get("sort") ?? "recent";
+  const activeYear = searchParams.get("year") ?? "all";
   const [searchValue, setSearchValue] = useState(searchParams.get("q") ?? "");
 
   const updateParams = useCallback(
@@ -108,11 +109,32 @@ export function FilterBar() {
           </SelectContent>
         </Select>
 
+        {streamYears.length > 0 && (
+          <Select
+            value={activeYear}
+            onValueChange={(value) => updateParams({ year: String(value) })}
+          >
+            <SelectTrigger className="w-full sm:w-36">
+              <SelectValue placeholder="Año de stream">
+                {activeYear === "all" ? "Todos los años" : activeYear}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos los años</SelectItem>
+              {streamYears.map((year) => (
+                <SelectItem key={year} value={String(year)}>
+                  {year}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+
         <Select
           value={activeSort}
           onValueChange={(value) => updateParams({ sort: String(value) })}
         >
-          <SelectTrigger className="w-full sm:w-48">
+          <SelectTrigger className="w-full sm:w-56">
             <SelectValue placeholder="Ordenar por">
               {SORT_OPTIONS.find((option) => option.value === activeSort)?.label}
             </SelectValue>

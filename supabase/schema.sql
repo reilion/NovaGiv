@@ -17,11 +17,18 @@ create table if not exists media_items (
   status text check (status in ('ongoing', 'completed')),
   rating numeric(3, 1),
   published boolean not null default true,
+  -- Range of the stream dates parsed from the ok.ru video titles. Stored
+  -- WITHOUT time zone on purpose: these are wall-clock stream dates, and
+  -- converting them to UTC would slide a 00:19 stream to the previous day.
+  first_streamed_at timestamp,
+  last_streamed_at timestamp,
   created_at timestamptz not null default now()
 );
 
--- Runs when upgrading a table created by an older version of this file.
+-- These run when upgrading a table created by an older version of this file.
 alter table media_items add column if not exists published boolean not null default true;
+alter table media_items add column if not exists first_streamed_at timestamp;
+alter table media_items add column if not exists last_streamed_at timestamp;
 
 create table if not exists episodes (
   id uuid primary key default gen_random_uuid(),
@@ -32,13 +39,19 @@ create table if not exists episodes (
   okru_embed_url text not null,
   duration text,
   thumbnail_url text,
+  -- Date of the stream, parsed from the ok.ru video title. See the note on
+  -- media_items above for why this is timestamp WITHOUT time zone.
+  streamed_at timestamp,
   unique (media_item_id, season_number, episode_number)
 );
+
+alter table episodes add column if not exists streamed_at timestamp;
 
 create index if not exists episodes_media_item_id_idx on episodes (media_item_id);
 create index if not exists media_items_type_idx on media_items (type);
 create index if not exists media_items_created_at_idx on media_items (created_at desc);
 create index if not exists media_items_published_idx on media_items (published);
+create index if not exists media_items_last_streamed_at_idx on media_items (last_streamed_at desc);
 
 alter table media_items enable row level security;
 alter table episodes enable row level security;

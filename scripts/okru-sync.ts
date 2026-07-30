@@ -20,6 +20,8 @@ import { config } from "dotenv";
 import { createClient } from "@supabase/supabase-js";
 import { chromium, type BrowserContext, type Page } from "playwright";
 
+import { formatStreamDate, formatStreamRange, parseStreamTitle } from "@/lib/stream-date";
+
 config({ path: ".env.local" });
 
 const PROFILE_URL =
@@ -60,6 +62,8 @@ interface ScrapedVideo {
   title: string;
   duration?: string;
   thumbnailUrl?: string;
+  /** Parsed from the ok.ru title; absent when the title carries no date. */
+  streamedAt?: string;
 }
 
 /**
@@ -231,16 +235,32 @@ async function scrapeChannelVideos(
 
   await page.close();
 
-  return videos
-    .map((v) => ({
-      id: v.id,
-      title: v.title,
-      duration: v.durationRaw ? formatDuration(v.durationRaw) : undefined,
-      thumbnailUrl: v.thumbnailUrl,
-    }))
-    // ok.ru lists newest first; ids grow with upload order and exceed
-    // Number.MAX_SAFE_INTEGER, so compare as BigInt.
-    .sort((a, b) => (BigInt(a.id) < BigInt(b.id) ? -1 : 1));
+  return (
+    videos
+      .map((v) => {
+        const { streamedAt, cleanTitle } = parseStreamTitle(v.title);
+        return {
+          id: v.id,
+          // Titles that are just a date become e.g. "13 julio 2024"; titles
+          // like "H2011 del 132 al 136 2024-07-13 ..." keep the useful part.
+          title: cleanTitle || formatStreamDate(streamedAt) || v.title,
+          duration: v.durationRaw ? formatDuration(v.durationRaw) : undefined,
+          thumbnailUrl: v.thumbnailUrl,
+          streamedAt,
+        };
+      })
+      // Chronological by stream date when known. Falls back to the video id,
+      // which grows with upload order and can exceed Number.MAX_SAFE_INTEGER
+      // (hence BigInt).
+      .sort((a, b) => {
+        if (a.streamedAt && b.streamedAt) {
+          if (a.streamedAt !== b.streamedAt) return a.streamedAt < b.streamedAt ? -1 : 1;
+        } else if (a.streamedAt || b.streamedAt) {
+          return a.streamedAt ? -1 : 1;
+        }
+        return BigInt(a.id) < BigInt(b.id) ? -1 : 1;
+      })
+  );
 }
 
 async function main() {
@@ -290,10 +310,21 @@ async function main() {
       continue;
     }
 
+    // Videos are already sorted chronologically, so the range is the ends.
+    const dated = videos.filter((v) => v.streamedAt);
+    const firstStreamedAt = dated[0]?.streamedAt ?? null;
+    const lastStreamedAt = dated[dated.length - 1]?.streamedAt ?? null;
+    const undatedCount = videos.length - dated.length;
+
     if (DRY_RUN) {
       const expected = channel.videoCount;
       const warn = expected && videos.length !== expected ? ` ⚠ ok.ru decía ${expected}` : "";
-      console.log(`${position} ${channel.name}: ${videos.length} videos${warn}`);
+      const range = formatStreamRange(firstStreamedAt ?? undefined, lastStreamedAt ?? undefined);
+      const undated = undatedCount ? ` · ${undatedCount} sin fecha` : "";
+      console.log(
+        `${position} ${channel.name}: ${videos.length} videos${warn}` +
+          `${range ? ` · ${range}` : " · sin fechas"}${undated}`
+      );
       continue;
     }
 
@@ -327,6 +358,8 @@ async function main() {
       description: null,
       status: "ongoing" as const,
       published: false,
+      first_streamed_at: firstStreamedAt,
+      last_streamed_at: lastStreamedAt,
     };
 
     let mediaItemId: string;
@@ -364,6 +397,7 @@ async function main() {
         okru_embed_url: `https://ok.ru/videoembed/${video.id}`,
         duration: video.duration ?? null,
         thumbnail_url: video.thumbnailUrl ?? null,
+        streamed_at: video.streamedAt ?? null,
       }))
     );
 
@@ -372,7 +406,11 @@ async function main() {
     } else {
       const expected = channel.videoCount;
       const warn = expected && videos.length !== expected ? ` (ok.ru decía ${expected})` : "";
-      console.log(`${position} ${channel.name}: ${videos.length} episodios${warn}`);
+      const range = formatStreamRange(firstStreamedAt ?? undefined, lastStreamedAt ?? undefined);
+      console.log(
+        `${position} ${channel.name}: ${videos.length} episodios${warn}` +
+          `${range ? ` · ${range}` : ""}`
+      );
     }
   }
 

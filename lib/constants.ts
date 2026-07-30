@@ -11,6 +11,8 @@ export const FILTER_TABS: { value: MediaType | "all"; label: string }[] = [
 
 export const SORT_OPTIONS: { value: SortOption; label: string }[] = [
   { value: "recent", label: "Más recientes" },
+  { value: "streamed", label: "Stream más reciente" },
+  { value: "streamed-asc", label: "Stream más antiguo" },
   { value: "az", label: "A-Z" },
   { value: "year", label: "Año" },
 ];

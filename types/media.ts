@@ -39,6 +39,8 @@ export interface MediaItem {
   episodes?: Episode[];
   status?: MediaStatus;
   rating?: number;
+  /** Drafts (false) are hidden from the public catalog until the admin publishes them. Defaults to true. */
+  published?: boolean;
 }
 
 export const MEDIA_TYPE_LABELS: Record<MediaType, string> = {

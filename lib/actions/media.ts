@@ -3,9 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
+import { requireAdminClient } from "@/lib/actions/require-admin";
 import { MOCK_MEDIA } from "@/lib/mock-data";
 import { toOkRuEmbedUrl } from "@/lib/okru";
-import { createClient } from "@/lib/supabase/server";
 import type { MediaStatus, MediaType } from "@/types/media";
 
 export interface EpisodeInput {
@@ -29,23 +29,13 @@ export interface MediaFormInput {
   okRuEmbedUrl?: string;
   status?: MediaStatus;
   rating?: number;
+  /** Hidden from the public catalog while false — e.g. an ok.ru import awaiting review. */
+  published: boolean;
   episodes: EpisodeInput[];
 }
 
 export interface ActionResult {
   error?: string;
-}
-
-/** Every admin action requires a logged-in Supabase user; RLS enforces it too, this just fails fast with a clear redirect. */
-async function requireAdminClient() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) redirect("/admin/login");
-
-  return supabase;
 }
 
 export async function upsertMediaItem(input: MediaFormInput): Promise<ActionResult> {
@@ -73,6 +63,7 @@ export async function upsertMediaItem(input: MediaFormInput): Promise<ActionResu
     okru_embed_url: input.okRuEmbedUrl?.trim() ? toOkRuEmbedUrl(input.okRuEmbedUrl.trim()) : null,
     status: input.status ?? null,
     rating: input.rating ?? null,
+    published: input.published,
   };
 
   let mediaItemId = input.id;
@@ -127,6 +118,17 @@ export async function deleteMediaItem(id: string): Promise<ActionResult> {
   return {};
 }
 
+export async function togglePublished(id: string, published: boolean): Promise<ActionResult> {
+  const supabase = await requireAdminClient();
+
+  const { error } = await supabase.from("media_items").update({ published }).eq("id", id);
+  if (error) return { error: error.message };
+
+  revalidatePath("/");
+  revalidatePath("/admin");
+  return {};
+}
+
 /**
  * One-click import of lib/mock-data.ts into Supabase — lets the admin bring
  * over the demo catalog instead of retyping every title/episode by hand.
@@ -156,6 +158,7 @@ export async function seedMockData(): Promise<ActionResult> {
       okru_embed_url: item.okRuEmbedUrl ?? null,
       status: item.status ?? null,
       rating: item.rating ?? null,
+      published: item.published !== false,
       created_at: item.createdAt,
     };
 

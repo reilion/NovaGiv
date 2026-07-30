@@ -14,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { type EpisodeInput, upsertMediaItem } from "@/lib/actions/media";
 import { slugify } from "@/lib/text";
@@ -27,8 +28,19 @@ import {
   type MediaType,
 } from "@/types/media";
 
+/** Prefill for a brand-new title — e.g. from the ok.ru import wizard. Ignored when `item` is set. */
+interface MediaFormInitialValues {
+  title?: string;
+  type?: MediaType;
+  posterUrl?: string;
+  genres?: string[];
+  published?: boolean;
+  episodes?: EpisodeInput[];
+}
+
 interface MediaFormProps {
   item?: MediaItem;
+  initialValues?: MediaFormInitialValues;
 }
 
 interface EpisodeDraft extends EpisodeInput {
@@ -43,34 +55,49 @@ function nextDraftKey() {
 
 const MEDIA_TYPES = Object.keys(MEDIA_TYPE_LABELS) as MediaType[];
 
-export function MediaForm({ item }: MediaFormProps) {
+export function MediaForm({ item, initialValues }: MediaFormProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
-  const [title, setTitle] = useState(item?.title ?? "");
-  const [slug, setSlug] = useState(item?.slug ?? "");
+  const [title, setTitle] = useState(item?.title ?? initialValues?.title ?? "");
+  const [slug, setSlug] = useState(item?.slug ?? (initialValues?.title ? slugify(initialValues.title) : ""));
   const [slugTouched, setSlugTouched] = useState(Boolean(item));
-  const [type, setType] = useState<MediaType>(item?.type ?? "movie");
-  const [posterUrl, setPosterUrl] = useState(item?.posterUrl ?? "");
-  const [genresInput, setGenresInput] = useState(item?.genres.join(", ") ?? "");
+  const [type, setType] = useState<MediaType>(item?.type ?? initialValues?.type ?? "movie");
+  const [posterUrl, setPosterUrl] = useState(item?.posterUrl ?? initialValues?.posterUrl ?? "");
+  const [genresInput, setGenresInput] = useState(
+    item?.genres.join(", ") ?? initialValues?.genres?.join(", ") ?? ""
+  );
   const [year, setYear] = useState(item?.year?.toString() ?? "");
   const [description, setDescription] = useState(item?.description ?? "");
   const [rating, setRating] = useState(item?.rating?.toString() ?? "");
   const [duration, setDuration] = useState(item?.duration ?? "");
   const [okRuEmbedUrl, setOkRuEmbedUrl] = useState(item?.okRuEmbedUrl ?? "");
   const [status, setStatus] = useState<MediaStatus>(item?.status ?? "ongoing");
-  const [episodes, setEpisodes] = useState<EpisodeDraft[]>(
-    () =>
-      item?.episodes?.map((episode) => ({
+  const [published, setPublished] = useState(item?.published ?? initialValues?.published ?? true);
+  const [episodes, setEpisodes] = useState<EpisodeDraft[]>(() => {
+    if (item?.episodes) {
+      return item.episodes.map((episode) => ({
         key: episode.id,
         seasonNumber: episode.seasonNumber,
         episodeNumber: episode.episodeNumber,
         title: episode.title,
         okRuEmbedUrl: episode.okRuEmbedUrl,
         duration: episode.duration,
-      })) ?? []
-  );
+      }));
+    }
+    if (initialValues?.episodes) {
+      return initialValues.episodes.map((episode) => ({
+        key: nextDraftKey(),
+        seasonNumber: episode.seasonNumber,
+        episodeNumber: episode.episodeNumber,
+        title: episode.title,
+        okRuEmbedUrl: episode.okRuEmbedUrl,
+        duration: episode.duration,
+      }));
+    }
+    return [];
+  });
 
   const episodic = isEpisodic(type);
 
@@ -136,6 +163,7 @@ export function MediaForm({ item }: MediaFormProps) {
         duration: episodic ? undefined : duration || undefined,
         okRuEmbedUrl: episodic ? undefined : okRuEmbedUrl || undefined,
         status: episodic ? status : undefined,
+        published,
         episodes: episodic
           ? episodes.map((episode) => ({
               seasonNumber: episode.seasonNumber,
@@ -159,6 +187,16 @@ export function MediaForm({ item }: MediaFormProps) {
           <CardDescription>Información base del título, visible en el catálogo.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-border p-3 sm:col-span-2">
+            <div className="flex flex-col gap-0.5">
+              <span className="text-sm font-medium text-foreground">Publicado</span>
+              <span className="text-xs text-muted-foreground">
+                Apagado = borrador, oculto del catálogo público hasta que lo actives.
+              </span>
+            </div>
+            <Switch checked={published} onCheckedChange={setPublished} />
+          </div>
+
           <Field label="Título" htmlFor="title" className="sm:col-span-2">
             <Input
               id="title"

@@ -1,15 +1,16 @@
 import Link from "next/link";
-import { Pencil, Plus } from "lucide-react";
+import { Download, Pencil, Plus } from "lucide-react";
 
 import { DeleteMediaButton } from "@/components/admin/delete-media-button";
+import { PublishToggleButton } from "@/components/admin/publish-toggle-button";
 import { SeedButton } from "@/components/admin/seed-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { getMediaItems, isSupabaseConfigured } from "@/lib/queries";
+import { getAllMediaItemsForAdmin, isSupabaseConfigured } from "@/lib/queries";
 import { isEpisodic, MEDIA_TYPE_LABELS } from "@/types/media";
 
 export default async function AdminDashboardPage() {
-  const items = await getMediaItems();
+  const items = await getAllMediaItemsForAdmin();
 
   return (
     <div className="flex flex-col gap-6">
@@ -28,6 +29,10 @@ export default async function AdminDashboardPage() {
         </div>
         <div className="flex items-center gap-2">
           <SeedButton />
+          <Button render={<Link href="/admin/import" />} variant="outline">
+            <Download className="size-4" />
+            Importar de ok.ru
+          </Button>
           <Button render={<Link href="/admin/media/new" />}>
             <Plus className="size-4" />
             Nuevo título
@@ -41,6 +46,7 @@ export default async function AdminDashboardPage() {
             <tr>
               <th className="px-4 py-3 font-medium">Título</th>
               <th className="px-4 py-3 font-medium">Tipo</th>
+              <th className="px-4 py-3 font-medium">Estado</th>
               <th className="px-4 py-3 font-medium">Año</th>
               <th className="px-4 py-3 font-medium">Episodios</th>
               <th className="px-4 py-3 font-medium" />
@@ -52,6 +58,9 @@ export default async function AdminDashboardPage() {
                 <td className="px-4 py-3 font-medium text-foreground">{item.title}</td>
                 <td className="px-4 py-3">
                   <Badge variant="outline">{MEDIA_TYPE_LABELS[item.type]}</Badge>
+                </td>
+                <td className="px-4 py-3">
+                  <PublishToggleButton id={item.id} published={item.published !== false} />
                 </td>
                 <td className="px-4 py-3 text-muted-foreground">{item.year ?? "—"}</td>
                 <td className="px-4 py-3 text-muted-foreground">
@@ -74,9 +83,9 @@ export default async function AdminDashboardPage() {
             ))}
             {items.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-4 py-10 text-center text-muted-foreground">
-                  Sin títulos todavía. Usa &ldquo;Sembrar datos de ejemplo&rdquo; o crea uno
-                  nuevo.
+                <td colSpan={6} className="px-4 py-10 text-center text-muted-foreground">
+                  Sin títulos todavía. Usa &ldquo;Sembrar datos de ejemplo&rdquo;, &ldquo;Importar
+                  de ok.ru&rdquo; o crea uno nuevo.
                 </td>
               </tr>
             )}

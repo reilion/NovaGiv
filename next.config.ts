@@ -7,7 +7,9 @@ const nextConfig: NextConfig = {
       { protocol: "https", hostname: "picsum.photos" },
       // Supabase Storage, once posters are uploaded there.
       { protocol: "https", hostname: "*.supabase.co" },
-      // Ok.ru thumbnail CDN.
+      // Ok.ru video/channel thumbnail CDN (used by the ok.ru import wizard).
+      { protocol: "https", hostname: "iv.okcdn.ru" },
+      { protocol: "https", hostname: "*.okcdn.ru" },
       { protocol: "https", hostname: "i.mycdn.me" },
       { protocol: "https", hostname: "*.mycdn.me" },
       // IMDb poster CDN (m.media-amazon.com).

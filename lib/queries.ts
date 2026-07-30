@@ -32,6 +32,7 @@ interface MediaItemRow {
   okru_embed_url: string | null;
   status: MediaItem["status"] | null;
   rating: number | null;
+  published: boolean;
   created_at: string;
   episodes: EpisodeRow[] | null;
 }
@@ -62,6 +63,7 @@ function mapMediaItem(row: MediaItemRow): MediaItem {
     okRuEmbedUrl: row.okru_embed_url ?? undefined,
     status: row.status ?? undefined,
     rating: row.rating ?? undefined,
+    published: row.published,
     createdAt: row.created_at,
     episodes: row.episodes?.length
       ? row.episodes
@@ -71,8 +73,30 @@ function mapMediaItem(row: MediaItemRow): MediaItem {
   };
 }
 
-/** All catalog items, newest first. Falls back to local demo data until Supabase env vars are set. */
+/** Published catalog items, newest first — what the public site shows. Falls back to local demo data until Supabase env vars are set. */
 export async function getMediaItems(): Promise<MediaItem[]> {
+  if (!isSupabaseConfigured) return MOCK_MEDIA.filter((item) => item.published !== false);
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("media_items")
+    .select("*, episodes(*)")
+    .eq("published", true)
+    .order("created_at", { ascending: false });
+
+  if (error || !data) {
+    console.error("getMediaItems: falling back to mock data —", error?.message);
+    return MOCK_MEDIA.filter((item) => item.published !== false);
+  }
+
+  return (data as MediaItemRow[]).map(mapMediaItem);
+}
+
+/**
+ * Every catalog item regardless of published state — for the admin
+ * dashboard, so drafts (e.g. ok.ru imports awaiting review) show up there.
+ */
+export async function getAllMediaItemsForAdmin(): Promise<MediaItem[]> {
   if (!isSupabaseConfigured) return MOCK_MEDIA;
 
   const supabase = await createClient();
@@ -82,17 +106,17 @@ export async function getMediaItems(): Promise<MediaItem[]> {
     .order("created_at", { ascending: false });
 
   if (error || !data) {
-    console.error("getMediaItems: falling back to mock data —", error?.message);
+    console.error("getAllMediaItemsForAdmin: falling back to mock data —", error?.message);
     return MOCK_MEDIA;
   }
 
   return (data as MediaItemRow[]).map(mapMediaItem);
 }
 
-/** Single item by slug, used by the video player modal / detail route. */
+/** Single published item by slug, used by the video player modal / detail route. */
 export async function getMediaBySlug(slug: string): Promise<MediaItem | null> {
   if (!isSupabaseConfigured) {
-    return MOCK_MEDIA.find((item) => item.slug === slug) ?? null;
+    return MOCK_MEDIA.find((item) => item.slug === slug && item.published !== false) ?? null;
   }
 
   const supabase = await createClient();
@@ -100,6 +124,7 @@ export async function getMediaBySlug(slug: string): Promise<MediaItem | null> {
     .from("media_items")
     .select("*, episodes(*)")
     .eq("slug", slug)
+    .eq("published", true)
     .maybeSingle();
 
   if (error || !data) {

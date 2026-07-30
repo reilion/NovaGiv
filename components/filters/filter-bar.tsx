@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Search } from "lucide-react";
+import { CalendarRange, Search, X } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -13,7 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FILTER_TABS, GENRES, SORT_OPTIONS } from "@/lib/constants";
+import { FILTER_TABS, GENRES, MONTHS, SORT_OPTIONS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
 export function FilterBar({ streamYears = [] }: { streamYears?: number[] }) {
@@ -24,8 +25,14 @@ export function FilterBar({ streamYears = [] }: { streamYears?: number[] }) {
 
   const activeTab = searchParams.get("tab") ?? "all";
   const activeGenre = searchParams.get("genre") ?? "all";
-  const activeSort = searchParams.get("sort") ?? "recent";
+  // Keep in sync with DEFAULT_SORT in lib/media-filter.ts.
+  const activeSort = searchParams.get("sort") ?? "streamed";
   const activeYear = searchParams.get("year") ?? "all";
+  const activeMonth = searchParams.get("month") ?? "all";
+  const activeFrom = searchParams.get("from") ?? "";
+  const activeTo = searchParams.get("to") ?? "";
+  const hasRange = Boolean(activeFrom || activeTo);
+  const hasAnyDateFilter = hasRange || activeYear !== "all" || activeMonth !== "all";
   const [searchValue, setSearchValue] = useState(searchParams.get("q") ?? "");
 
   const updateParams = useCallback(
@@ -109,27 +116,6 @@ export function FilterBar({ streamYears = [] }: { streamYears?: number[] }) {
           </SelectContent>
         </Select>
 
-        {streamYears.length > 0 && (
-          <Select
-            value={activeYear}
-            onValueChange={(value) => updateParams({ year: String(value) })}
-          >
-            <SelectTrigger className="w-full sm:w-36">
-              <SelectValue placeholder="Año de stream">
-                {activeYear === "all" ? "Todos los años" : activeYear}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos los años</SelectItem>
-              {streamYears.map((year) => (
-                <SelectItem key={year} value={String(year)}>
-                  {year}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-
         <Select
           value={activeSort}
           onValueChange={(value) => updateParams({ sort: String(value) })}
@@ -147,6 +133,93 @@ export function FilterBar({ streamYears = [] }: { streamYears?: number[] }) {
             ))}
           </SelectContent>
         </Select>
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-end gap-2">
+        <span className="flex h-8 items-center gap-1.5 text-xs font-medium text-muted-foreground">
+          <CalendarRange className="size-4" />
+          Fechas
+        </span>
+
+        <Select
+          value={activeYear}
+          onValueChange={(value) => updateParams({ year: String(value) })}
+          disabled={hasRange}
+        >
+          <SelectTrigger className="w-40" aria-label="Año de stream">
+            <SelectValue placeholder="Año">
+              {activeYear === "all" ? "Todos los años" : activeYear}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos los años</SelectItem>
+            {streamYears.map((year) => (
+              <SelectItem key={year} value={String(year)}>
+                {year}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select
+          value={activeMonth}
+          onValueChange={(value) => updateParams({ month: String(value) })}
+          disabled={hasRange}
+        >
+          <SelectTrigger className="w-44" aria-label="Mes de stream">
+            <SelectValue placeholder="Mes">
+              {activeMonth === "all"
+                ? "Todos los meses"
+                : (MONTHS.find((m) => m.value === activeMonth)?.label ?? "Mes")}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos los meses</SelectItem>
+            {MONTHS.map((month) => (
+              <SelectItem key={month.value} value={month.value}>
+                {month.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <div className="flex items-center gap-1.5">
+          <Input
+            type="date"
+            value={activeFrom}
+            max={activeTo || undefined}
+            onChange={(event) => updateParams({ from: event.target.value || null })}
+            className="w-40"
+            aria-label="Desde"
+          />
+          <span className="text-xs text-muted-foreground">a</span>
+          <Input
+            type="date"
+            value={activeTo}
+            min={activeFrom || undefined}
+            onChange={(event) => updateParams({ to: event.target.value || null })}
+            className="w-40"
+            aria-label="Hasta"
+          />
+        </div>
+
+        {hasRange && (
+          <span className="text-xs text-muted-foreground">
+            El rango personalizado reemplaza al año y al mes.
+          </span>
+        )}
+
+        {hasAnyDateFilter && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => updateParams({ year: null, month: null, from: null, to: null })}
+          >
+            <X className="size-3.5" />
+            Limpiar fechas
+          </Button>
+        )}
       </div>
     </div>
   );

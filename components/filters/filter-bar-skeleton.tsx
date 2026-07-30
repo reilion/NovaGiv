@@ -7,7 +7,14 @@ export function FilterBarSkeleton() {
       <div className="mt-3 flex flex-col gap-3 sm:flex-row">
         <Skeleton className="h-8 flex-1 rounded-lg" />
         <Skeleton className="h-8 w-full rounded-lg sm:w-44" />
-        <Skeleton className="h-8 w-full rounded-lg sm:w-48" />
+        <Skeleton className="h-8 w-full rounded-lg sm:w-56" />
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <Skeleton className="h-8 w-16 rounded-lg" />
+        <Skeleton className="h-8 w-32 rounded-lg" />
+        <Skeleton className="h-8 w-36 rounded-lg" />
+        <Skeleton className="h-8 w-40 rounded-lg" />
+        <Skeleton className="h-8 w-40 rounded-lg" />
       </div>
     </div>
   );

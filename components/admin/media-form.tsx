@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2 } from "lucide-react";
+import { CalendarSearch, Plus, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,7 +17,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { type EpisodeInput, upsertMediaItem } from "@/lib/actions/media";
-import { formatStreamRange } from "@/lib/stream-date";
+import { formatStreamDate, formatStreamRange, parseStreamTitle } from "@/lib/stream-date";
 import { slugify } from "@/lib/text";
 import { cn } from "@/lib/utils";
 import {
@@ -60,6 +60,7 @@ export function MediaForm({ item, initialValues }: MediaFormProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [detectResult, setDetectResult] = useState<string | null>(null);
 
   const [title, setTitle] = useState(item?.title ?? initialValues?.title ?? "");
   const [slug, setSlug] = useState(item?.slug ?? (initialValues?.title ? slugify(initialValues.title) : ""));
@@ -104,6 +105,8 @@ export function MediaForm({ item, initialValues }: MediaFormProps) {
 
   const episodic = isEpisodic(type);
 
+  const missingDateCount = episodes.filter((episode) => !episode.streamedAt).length;
+
   // Mirrors what upsertMediaItem derives, so the admin sees the range that
   // will actually be stored.
   const streamRange = useMemo(() => {
@@ -140,6 +143,46 @@ export function MediaForm({ item, initialValues }: MediaFormProps) {
 
   function removeEpisode(key: string) {
     setEpisodes((current) => current.filter((ep) => ep.key !== key));
+  }
+
+  /**
+   * Backfill for collections saved before stream dates existed: their episode
+   * titles usually still are the raw ok.ru name ("2026-07-14 23-13-15"), so
+   * the date can be recovered from there. Only fills episodes that have no
+   * date yet, and tidies the title the same way the importer does. Applied to
+   * form state only — nothing is written until the admin saves.
+   */
+  function detectDatesFromTitles() {
+    let found = 0;
+    let missing = 0;
+
+    setEpisodes((current) =>
+      current.map((episode) => {
+        if (episode.streamedAt) return episode;
+
+        const { streamedAt, cleanTitle } = parseStreamTitle(episode.title);
+        if (!streamedAt) {
+          missing += 1;
+          return episode;
+        }
+
+        found += 1;
+        return {
+          ...episode,
+          streamedAt,
+          title: cleanTitle || formatStreamDate(streamedAt) || episode.title,
+        };
+      })
+    );
+
+    setDetectResult(
+      found === 0
+        ? `No se encontró ninguna fecha en los títulos${
+            missing ? ` (${missing} sin fecha)` : ""
+          }. Complétalas a mano abajo.`
+        : `${found} fecha${found === 1 ? "" : "s"} detectada${found === 1 ? "" : "s"}` +
+            `${missing ? ` · ${missing} sin fecha en el título` : ""}. Revisa y guarda.`
+    );
   }
 
   function handleSubmit(event: React.FormEvent) {
@@ -431,10 +474,19 @@ export function MediaForm({ item, initialValues }: MediaFormProps) {
               ))}
             </div>
 
-            <Button type="button" variant="outline" onClick={addEpisode} className="self-start">
-              <Plus className="size-4" />
-              Añadir episodio
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button type="button" variant="outline" onClick={addEpisode}>
+                <Plus className="size-4" />
+                Añadir episodio
+              </Button>
+              {missingDateCount > 0 && (
+                <Button type="button" variant="outline" onClick={detectDatesFromTitles}>
+                  <CalendarSearch className="size-4" />
+                  Detectar fechas desde los títulos ({missingDateCount})
+                </Button>
+              )}
+            </div>
+            {detectResult && <p className="text-sm text-muted-foreground">{detectResult}</p>}
           </CardContent>
         </Card>
       ) : (

@@ -9,35 +9,6 @@
  * negative-offset timezone.
  */
 
-const STREAM_DATE_PATTERN =
-  /(\d{4})-(\d{2})-(\d{2})(?:[ _T]+(\d{2})[-:](\d{2})[-:](\d{2}))?/;
-
-export interface ParsedStreamTitle {
-  /** "YYYY-MM-DDTHH:MM:SS" (or "YYYY-MM-DDT00:00:00" when the title had no time). */
-  streamedAt?: string;
-  /** The title with the date removed; empty when the title was only a date. */
-  cleanTitle: string;
-}
-
-export function parseStreamTitle(rawTitle: string): ParsedStreamTitle {
-  const match = rawTitle.match(STREAM_DATE_PATTERN);
-  if (!match) return { cleanTitle: rawTitle.trim() };
-
-  const [, year, month, day, hour, minute, second] = match;
-  const time = hour ? `${hour}:${minute}:${second}` : "00:00:00";
-
-  const monthNum = Number(month);
-  const dayNum = Number(day);
-  if (monthNum < 1 || monthNum > 12 || dayNum < 1 || dayNum > 31) {
-    return { cleanTitle: rawTitle.trim() };
-  }
-
-  return {
-    streamedAt: `${year}-${month}-${day}T${time}`,
-    cleanTitle: rawTitle.replace(STREAM_DATE_PATTERN, "").replace(/\s+/g, " ").trim(),
-  };
-}
-
 const MONTHS_ES = [
   "enero",
   "febrero",
@@ -52,6 +23,75 @@ const MONTHS_ES = [
   "noviembre",
   "diciembre",
 ];
+
+/** The raw ok.ru form: "2026-07-28 00-19-09". */
+const ISO_DATE_PATTERN = /(\d{4})-(\d{2})-(\d{2})(?:[ _T]+(\d{2})[-:](\d{2})[-:](\d{2}))?/;
+
+/**
+ * The human form this module itself produces: "30 abril 2026". Parsing it back
+ * matters because `formatStreamDate` rewrites episode titles, so without this
+ * a title that already went through the importer would become unreadable to
+ * the "detect dates" backfill.
+ */
+const SPANISH_DATE_PATTERN = new RegExp(
+  `\\b(\\d{1,2})\\s+(${MONTHS_ES.join("|")})\\s+(\\d{4})\\b`,
+  "i"
+);
+
+export interface ParsedStreamTitle {
+  /** "YYYY-MM-DDTHH:MM:SS" (or "YYYY-MM-DDT00:00:00" when the title had no time). */
+  streamedAt?: string;
+  /** The title with the date removed; empty when the title was only a date. */
+  cleanTitle: string;
+}
+
+function build(
+  rawTitle: string,
+  pattern: RegExp,
+  year: string,
+  month: string,
+  day: string,
+  time: string
+): ParsedStreamTitle {
+  const monthNum = Number(month);
+  const dayNum = Number(day);
+  if (monthNum < 1 || monthNum > 12 || dayNum < 1 || dayNum > 31) {
+    return { cleanTitle: rawTitle.trim() };
+  }
+
+  const pad = (value: string) => value.padStart(2, "0");
+  return {
+    streamedAt: `${year}-${pad(month)}-${pad(day)}T${time}`,
+    cleanTitle: rawTitle.replace(pattern, "").replace(/\s+/g, " ").trim(),
+  };
+}
+
+export function parseStreamTitle(rawTitle: string): ParsedStreamTitle {
+  const iso = rawTitle.match(ISO_DATE_PATTERN);
+  if (iso) {
+    const [, year, month, day, hour, minute, second] = iso;
+    return build(
+      rawTitle,
+      ISO_DATE_PATTERN,
+      year,
+      month,
+      day,
+      hour ? `${hour}:${minute}:${second}` : "00:00:00"
+    );
+  }
+
+  const spanish = rawTitle.match(SPANISH_DATE_PATTERN);
+  if (spanish) {
+    const [, day, monthName, year] = spanish;
+    const monthIndex = MONTHS_ES.indexOf(monthName.toLowerCase());
+    if (monthIndex !== -1) {
+      // No clock time survives this format; the day is what matters.
+      return build(rawTitle, SPANISH_DATE_PATTERN, year, String(monthIndex + 1), day, "00:00:00");
+    }
+  }
+
+  return { cleanTitle: rawTitle.trim() };
+}
 
 /** Formats without going through Date, so no timezone shifting can occur. */
 export function formatStreamDate(value: string | undefined, opts?: { withYear?: boolean }): string {

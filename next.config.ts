@@ -16,6 +16,12 @@ const nextConfig: NextConfig = {
       { protocol: "https", hostname: "m.media-amazon.com" },
       // TMDB poster CDN, another common poster source.
       { protocol: "https", hostname: "image.tmdb.org" },
+      // AniList cover/banner CDN (s4.anilist.co, img.anili.st).
+      { protocol: "https", hostname: "*.anilist.co" },
+      { protocol: "https", hostname: "anilist.co" },
+      { protocol: "https", hostname: "*.anili.st" },
+      // MyAnimeList poster CDN, frequently paired with AniList metadata.
+      { protocol: "https", hostname: "cdn.myanimelist.net" },
     ],
   },
 };

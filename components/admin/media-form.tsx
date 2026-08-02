@@ -2,9 +2,12 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { CalendarSearch, Plus, Trash2 } from "lucide-react";
+import { CalendarSearch, ListOrdered, Plus, Scissors, Trash2 } from "lucide-react";
 
+import { ChannelEpisodePicker } from "@/components/admin/channel-episode-picker";
+import { ExtractEpisodeDialog } from "@/components/admin/extract-episode-dialog";
 import { OkRuChannelPicker } from "@/components/admin/okru-channel-picker";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -17,7 +20,9 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { type EpisodeInput, upsertMediaItem } from "@/lib/actions/media";
+import { extractEpisodeToCollection } from "@/lib/actions/channel-collections";
+import type { ChannelSiblingEpisode } from "@/lib/actions/channel-collections";
+import { upsertMediaItem } from "@/lib/actions/media";
 import { formatStreamDate, formatStreamRange, parseStreamTitle } from "@/lib/stream-date";
 import { slugify } from "@/lib/text";
 import { cn } from "@/lib/utils";
@@ -25,6 +30,8 @@ import {
   isEpisodic,
   MEDIA_STATUS_LABELS,
   MEDIA_TYPE_LABELS,
+  type EpisodeInput,
+  type MediaFormInput,
   type MediaItem,
   type MediaStatus,
   type MediaType,
@@ -79,6 +86,9 @@ export function MediaForm({ item, initialValues }: MediaFormProps) {
   const [rating, setRating] = useState(item?.rating?.toString() ?? "");
   const [duration, setDuration] = useState(item?.duration ?? "");
   const [okRuEmbedUrl, setOkRuEmbedUrl] = useState(item?.okRuEmbedUrl ?? "");
+  // Single-video collections (a movie extracted from a channel, say) keep the
+  // stream date here; episodic ones derive it from their episodes.
+  const [streamedAt, setStreamedAt] = useState(item?.firstStreamedAt?.slice(0, 10) ?? "");
   const [status, setStatus] = useState<MediaStatus>(item?.status ?? "ongoing");
   const [published, setPublished] = useState(item?.published ?? initialValues?.published ?? true);
   const [okruChannel, setOkruChannel] = useState<OkRuChannelRef | null>(() => {
@@ -100,6 +110,7 @@ export function MediaForm({ item, initialValues }: MediaFormProps) {
         title: episode.title,
         okRuEmbedUrl: episode.okRuEmbedUrl,
         duration: episode.duration,
+        thumbnailUrl: episode.thumbnailUrl,
         streamedAt: episode.streamedAt,
       }));
     }
@@ -111,11 +122,19 @@ export function MediaForm({ item, initialValues }: MediaFormProps) {
         title: episode.title,
         okRuEmbedUrl: episode.okRuEmbedUrl,
         duration: episode.duration,
+        thumbnailUrl: episode.thumbnailUrl,
         streamedAt: episode.streamedAt,
       }));
     }
     return [];
   });
+
+  // Splitting a channel into several collections: which episode is being
+  // pulled out, and whether the "take episodes from a sibling" panel is open.
+  const [extractingKey, setExtractingKey] = useState<string | null>(null);
+  const [extractError, setExtractError] = useState<string | null>(null);
+  const [isExtracting, startExtracting] = useTransition();
+  const [isPickingEpisodes, setIsPickingEpisodes] = useState(false);
 
   const episodic = isEpisodic(type);
 
@@ -159,6 +178,45 @@ export function MediaForm({ item, initialValues }: MediaFormProps) {
     setEpisodes((current) => current.filter((ep) => ep.key !== key));
   }
 
+  /** Closes the gaps left by episodes moved to another collection. */
+  function renumberEpisodes() {
+    setEpisodes((current) => {
+      const counters = new Map<number | null, number>();
+      return current.map((episode) => {
+        const season = episode.seasonNumber ?? null;
+        const next = (counters.get(season) ?? 0) + 1;
+        counters.set(season, next);
+        return { ...episode, episodeNumber: next };
+      });
+    });
+  }
+
+  /**
+   * Videos taken from another collection of the same channel. They're only
+   * staged here: `claimedFromEpisodeId` tells the save to delete the original
+   * row, so the video ends up in one collection and not two.
+   */
+  function addEpisodesFromChannel(picked: ChannelSiblingEpisode[]) {
+    setEpisodes((current) => {
+      const lastEpisode = current[current.length - 1];
+      let nextNumber = (lastEpisode?.episodeNumber ?? 0) + 1;
+      return [
+        ...current,
+        ...picked.map((episode) => ({
+          key: nextDraftKey(),
+          seasonNumber: lastEpisode?.seasonNumber,
+          episodeNumber: nextNumber++,
+          title: episode.title,
+          okRuEmbedUrl: episode.okRuEmbedUrl,
+          duration: episode.duration,
+          thumbnailUrl: episode.thumbnailUrl,
+          streamedAt: episode.streamedAt,
+          claimedFromEpisodeId: episode.id,
+        })),
+      ];
+    });
+  }
+
   /**
    * Backfill for collections saved before stream dates existed: their episode
    * titles usually still are the raw ok.ru name ("2026-07-14 23-13-15"), so
@@ -199,6 +257,42 @@ export function MediaForm({ item, initialValues }: MediaFormProps) {
     );
   }
 
+  /** The form as the server expects it — shared by "guardar" and by extracting an episode. */
+  function currentInput(): MediaFormInput {
+    return {
+      id: item?.id,
+      title,
+      slug,
+      type,
+      posterUrl,
+      genres: genresInput
+        .split(",")
+        .map((genre) => genre.trim())
+        .filter(Boolean),
+      year: year ? Number(year) : undefined,
+      description: description || undefined,
+      rating: rating ? Number(rating) : undefined,
+      duration: episodic ? undefined : duration || undefined,
+      okRuEmbedUrl: episodic ? undefined : okRuEmbedUrl || undefined,
+      status: episodic ? status : undefined,
+      streamedAt: episodic ? undefined : streamedAt || undefined,
+      published,
+      okruChannel,
+      episodes: episodic
+        ? episodes.map((episode) => ({
+            seasonNumber: episode.seasonNumber,
+            episodeNumber: episode.episodeNumber,
+            title: episode.title,
+            okRuEmbedUrl: episode.okRuEmbedUrl,
+            duration: episode.duration,
+            thumbnailUrl: episode.thumbnailUrl,
+            streamedAt: episode.streamedAt,
+            claimedFromEpisodeId: episode.claimedFromEpisodeId,
+          }))
+        : [],
+    };
+  }
+
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
@@ -217,37 +311,29 @@ export function MediaForm({ item, initialValues }: MediaFormProps) {
     }
 
     startTransition(async () => {
-      const result = await upsertMediaItem({
-        id: item?.id,
-        title,
-        slug,
-        type,
-        posterUrl,
-        genres: genresInput
-          .split(",")
-          .map((genre) => genre.trim())
-          .filter(Boolean),
-        year: year ? Number(year) : undefined,
-        description: description || undefined,
-        rating: rating ? Number(rating) : undefined,
-        duration: episodic ? undefined : duration || undefined,
-        okRuEmbedUrl: episodic ? undefined : okRuEmbedUrl || undefined,
-        status: episodic ? status : undefined,
-        published,
-        okruChannel,
-        episodes: episodic
-          ? episodes.map((episode) => ({
-              seasonNumber: episode.seasonNumber,
-              episodeNumber: episode.episodeNumber,
-              title: episode.title,
-              okRuEmbedUrl: episode.okRuEmbedUrl,
-              duration: episode.duration,
-              streamedAt: episode.streamedAt,
-            }))
-          : [],
-      });
-
+      const result = await upsertMediaItem(currentInput());
       if (result?.error) setError(result.error);
+    });
+  }
+
+  /**
+   * Pulls one episode out into a collection of its own. The action saves this
+   * collection too — otherwise the video would exist in both places — and then
+   * navigates to the new one.
+   */
+  function handleExtract(values: { title: string; type: MediaType }) {
+    const episodeIndex = episodes.findIndex((episode) => episode.key === extractingKey);
+    if (episodeIndex === -1) return;
+
+    setExtractError(null);
+    startExtracting(async () => {
+      const result = await extractEpisodeToCollection({
+        source: currentInput(),
+        episodeIndex,
+        title: values.title,
+        type: values.type,
+      });
+      if (result?.error) setExtractError(result.error);
     });
   }
 
@@ -375,6 +461,7 @@ export function MediaForm({ item, initialValues }: MediaFormProps) {
             value={okruChannel}
             onChange={setOkruChannel}
             savedChannelId={item?.okruChannelId}
+            isPrimary={item?.okruChannelPrimary}
           />
         </CardContent>
       </Card>
@@ -385,7 +472,10 @@ export function MediaForm({ item, initialValues }: MediaFormProps) {
             <CardTitle>Episodios</CardTitle>
             <CardDescription>
               Se agrupan automáticamente por temporada en el reproductor. Deja el número
-              de temporada vacío si el título tiene una sola.
+              de temporada vacío si el título tiene una sola. Si el canal mezcla contenido
+              sin relación, el botón <Scissors className="inline size-3" /> de cada episodio
+              lo saca a una colección propia (una película, por ejemplo) sin perder la
+              referencia al canal.
               {streamRange && (
                 <>
                   {" "}
@@ -497,12 +587,41 @@ export function MediaForm({ item, initialValues }: MediaFormProps) {
                       variant="ghost"
                       size="icon-sm"
                       className="mb-0.5 shrink-0"
+                      disabled={!item?.id || episodes.length < 2}
+                      onClick={() => {
+                        setExtractError(null);
+                        setExtractingKey(episode.key);
+                      }}
+                      aria-label={`Extraer "${episode.title}" a una colección nueva`}
+                      title={
+                        !item?.id
+                          ? "Guarda la colección antes de extraer episodios"
+                          : episodes.length < 2
+                            ? "Es el único episodio: cambia el tipo de esta colección en vez de extraerlo"
+                            : "Extraer a una colección nueva (película, especial…)"
+                      }
+                    >
+                      <Scissors className="size-4" />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      className="mb-0.5 shrink-0"
                       onClick={() => removeEpisode(episode.key)}
                       aria-label="Eliminar episodio"
                     >
                       <Trash2 className="size-4 text-destructive" />
                     </Button>
                   </div>
+
+                  {episode.claimedFromEpisodeId && (
+                    <div className="col-span-2 sm:col-span-6">
+                      <Badge variant="secondary">
+                        Se moverá desde otra colección de este canal al guardar
+                      </Badge>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -512,6 +631,22 @@ export function MediaForm({ item, initialValues }: MediaFormProps) {
                 <Plus className="size-4" />
                 Añadir episodio
               </Button>
+              {item?.id && okruChannel && !isPickingEpisodes && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsPickingEpisodes(true)}
+                >
+                  <Plus className="size-4" />
+                  Traer episodios del canal
+                </Button>
+              )}
+              {episodes.length > 1 && (
+                <Button type="button" variant="outline" onClick={renumberEpisodes}>
+                  <ListOrdered className="size-4" />
+                  Renumerar
+                </Button>
+              )}
               {missingDateCount > 0 && (
                 <Button type="button" variant="outline" onClick={detectDatesFromTitles}>
                   <CalendarSearch className="size-4" />
@@ -520,6 +655,18 @@ export function MediaForm({ item, initialValues }: MediaFormProps) {
               )}
             </div>
             {detectResult && <p className="text-sm text-muted-foreground">{detectResult}</p>}
+
+            {isPickingEpisodes && item?.id && okruChannel && (
+              <ChannelEpisodePicker
+                mediaItemId={item.id}
+                channelId={okruChannel.id}
+                claimedEpisodeIds={episodes
+                  .map((episode) => episode.claimedFromEpisodeId)
+                  .filter((id): id is string => Boolean(id))}
+                onAdd={addEpisodesFromChannel}
+                onClose={() => setIsPickingEpisodes(false)}
+              />
+            )}
           </CardContent>
         </Card>
       ) : (
@@ -551,8 +698,37 @@ export function MediaForm({ item, initialValues }: MediaFormProps) {
                 placeholder="https://ok.ru/videoembed/..."
               />
             </Field>
+            <Field
+              label="Fecha del stream"
+              htmlFor="streamedAt"
+              hint="Ordena y filtra el catálogo por fecha de emisión. Se rellena sola al extraer el video de un canal."
+            >
+              <Input
+                id="streamedAt"
+                type="date"
+                value={streamedAt}
+                onChange={(event) => setStreamedAt(event.target.value)}
+              />
+            </Field>
           </CardContent>
         </Card>
+      )}
+
+      {extractingKey && (
+        <ExtractEpisodeDialog
+          open
+          onOpenChange={(open) => {
+            if (!open) {
+              setExtractingKey(null);
+              setExtractError(null);
+            }
+          }}
+          episodeTitle={episodes.find((episode) => episode.key === extractingKey)?.title ?? ""}
+          channelName={okruChannel?.name}
+          isPending={isExtracting}
+          error={extractError}
+          onConfirm={handleExtract}
+        />
       )}
 
       {error && <p className="text-sm text-destructive">{error}</p>}

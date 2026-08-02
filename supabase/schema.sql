@@ -30,6 +30,10 @@ create table if not exists media_items (
   -- so the original name stays visible after the collection is renamed.
   okru_channel_name text,
   okru_channel_url text,
+  -- A channel often mixes unrelated content, so its videos can be split into
+  -- several collections that all keep the reference above. Exactly one of them
+  -- is the primary: the one `pnpm okru:sync` appends new videos to.
+  okru_channel_primary boolean not null default false,
   created_at timestamptz not null default now()
 );
 
@@ -40,12 +44,28 @@ alter table media_items add column if not exists last_streamed_at timestamp;
 alter table media_items add column if not exists okru_channel_id text;
 alter table media_items add column if not exists okru_channel_name text;
 alter table media_items add column if not exists okru_channel_url text;
+alter table media_items add column if not exists okru_channel_primary boolean not null default false;
 
--- One collection per channel. Partial so the many rows with no channel
--- (hand-made titles) don't collide on null.
-create unique index if not exists media_items_okru_channel_id_key
+-- Runs once, when the flag is introduced: back then every linked collection was
+-- the channel's only one, so all of them are primary. Guarded so a later re-run
+-- can't promote the derived collections created since.
+do $$
+begin
+  if not exists (select 1 from media_items where okru_channel_primary) then
+    update media_items set okru_channel_primary = true where okru_channel_id is not null;
+  end if;
+end $$;
+
+-- Superseded by the index below: several collections may now share a channel.
+drop index if exists media_items_okru_channel_id_key;
+
+-- Only the primary is unique per channel. Partial so the many rows with no
+-- channel (hand-made titles) don't collide on null.
+create unique index if not exists media_items_okru_channel_primary_key
   on media_items (okru_channel_id)
-  where okru_channel_id is not null;
+  where okru_channel_id is not null and okru_channel_primary;
+
+create index if not exists media_items_okru_channel_id_idx on media_items (okru_channel_id);
 
 -- Catalogue of the channels seen on the streamer's ok.ru profile, refreshed by
 -- `pnpm okru:sync`. Its only job is to power the "link this collection to a

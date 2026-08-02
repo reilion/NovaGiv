@@ -22,6 +22,8 @@ interface OkRuChannelPickerProps {
   onChange: (channel: OkRuChannelRef | null) => void;
   /** The stored link, so the picker can tell "already saved" from "pending save". */
   savedChannelId?: string;
+  /** True when this is the collection the sync appends the channel's new videos to. */
+  isPrimary?: boolean;
 }
 
 /**
@@ -30,7 +32,12 @@ interface OkRuChannelPickerProps {
  * stored, or created by hand). The link — not the title — is what
  * `pnpm okru:sync` matches on, so it must survive renaming the collection.
  */
-export function OkRuChannelPicker({ value, onChange, savedChannelId }: OkRuChannelPickerProps) {
+export function OkRuChannelPicker({
+  value,
+  onChange,
+  savedChannelId,
+  isPrimary,
+}: OkRuChannelPickerProps) {
   const [isSearching, setIsSearching] = useState(false);
   const [channels, setChannels] = useState<LinkableOkRuChannel[] | null>(null);
   const [source, setSource] = useState<"db" | "live" | null>(null);
@@ -79,12 +86,14 @@ export function OkRuChannelPicker({ value, onChange, savedChannelId }: OkRuChann
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-sm font-medium text-foreground">{value.name}</span>
               <Badge variant="outline">{value.id}</Badge>
+              {isPrimary && <Badge>Principal del canal</Badge>}
               {isPending && <Badge variant="secondary">Sin guardar</Badge>}
             </div>
             <span className="text-xs text-muted-foreground">
-              Nombre original del canal en ok.ru. Aunque renombres esta colección, la
-              próxima sincronización seguirá reconociéndola por este canal y solo añadirá
-              los videos nuevos.
+              Nombre original del canal en ok.ru.{" "}
+              {isPrimary
+                ? "Aunque renombres esta colección, la próxima sincronización seguirá reconociéndola por este canal y solo añadirá los videos nuevos."
+                : "Esta colección salió de ese canal, pero los videos nuevos van a la colección principal del canal."}
             </span>
             {value.url && (
               <a
@@ -183,20 +192,18 @@ export function OkRuChannelPicker({ value, onChange, savedChannelId }: OkRuChann
           {results.length > 0 && (
             <div className="flex max-h-80 flex-col gap-2 overflow-y-auto">
               {results.map((channel) => {
-                // Linking the same channel twice would break the sync's
-                // one-collection-per-channel assumption (and the unique index).
-                const takenByAnother = Boolean(channel.linkedTo) && channel.id !== value?.id;
+                // A channel can back several collections (a movie split out of
+                // it, for instance), so being in use doesn't block linking —
+                // it just means this one won't be the collection the sync
+                // appends new videos to.
+                const usedElsewhere = Boolean(channel.linkedTo) && channel.id !== value?.id;
                 return (
                   <button
                     key={channel.id}
                     type="button"
-                    disabled={takenByAnother}
                     onClick={() => selectChannel(channel)}
                     className={cn(
-                      "flex items-center gap-3 rounded-lg border p-2 text-left transition-colors",
-                      takenByAnother
-                        ? "cursor-not-allowed border-border opacity-60"
-                        : "border-border hover:border-primary",
+                      "flex items-center gap-3 rounded-lg border border-border p-2 text-left transition-colors hover:border-primary",
                       channel.id === value?.id && "border-primary bg-primary/10"
                     )}
                   >
@@ -217,7 +224,9 @@ export function OkRuChannelPicker({ value, onChange, savedChannelId }: OkRuChann
                         {channel.id}
                         {typeof channel.videoCount === "number" &&
                           ` · ${channel.videoCount} video${channel.videoCount === 1 ? "" : "s"}`}
-                        {takenByAnother && ` · ya vinculado a "${channel.linkedTo}"`}
+                        {usedElsewhere && ` · principal: "${channel.linkedTo}"`}
+                        {(channel.linkedCount ?? 0) > 1 &&
+                          ` · ${channel.linkedCount} colecciones`}
                       </span>
                     </div>
                   </button>

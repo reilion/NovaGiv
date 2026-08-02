@@ -80,6 +80,7 @@ interface ExistingMediaItem {
   published: boolean;
   okru_channel_id: string | null;
   okru_channel_name: string | null;
+  okru_channel_primary: boolean;
 }
 
 interface ExistingEpisode {
@@ -407,13 +408,13 @@ async function main() {
 
     const slug = slugify(`${channel.name}-${channel.id}`);
 
-    // The channel id is the durable link: the admin is expected to rename
-    // these collections (and their slug) once imported.
-    const { data: byChannel, error: lookupError } = await supabase!
+    // Every collection built out of this channel: the primary one receives the
+    // new videos, and the rest (movies and such split out of it in /admin)
+    // matter because the videos they hold must not be imported again.
+    const { data: familyRows, error: lookupError } = await supabase!
       .from("media_items")
-      .select("id, title, published, okru_channel_id, okru_channel_name")
-      .eq("okru_channel_id", channel.id)
-      .maybeSingle();
+      .select("id, title, published, okru_channel_id, okru_channel_name, okru_channel_primary, okru_embed_url")
+      .eq("okru_channel_id", channel.id);
 
     if (lookupError) {
       console.error(`${position} ${channel.name}: error consultando —`, lookupError.message);
@@ -421,20 +422,32 @@ async function main() {
       continue;
     }
 
-    let existing = byChannel as ExistingMediaItem | null;
+    const family = (familyRows ?? []) as (ExistingMediaItem & { okru_embed_url: string | null })[];
+    let existing: ExistingMediaItem | null = family.find((row) => row.okru_channel_primary) ?? null;
 
     // Collections imported before the channel id was stored: adopt the one
     // still sitting on the slug this script would generate, so it gets the
     // link instead of being duplicated. Rows already tied to another channel
     // are left alone.
-    if (!existing) {
+    if (!existing && family.length === 0) {
       const { data: bySlug } = await supabase!
         .from("media_items")
-        .select("id, title, published, okru_channel_id, okru_channel_name")
+        .select("id, title, published, okru_channel_id, okru_channel_name, okru_channel_primary")
         .eq("slug", slug)
         .maybeSingle();
       const candidate = bySlug as ExistingMediaItem | null;
       if (candidate && !candidate.okru_channel_id) existing = candidate;
+    }
+
+    // Derived collections only, none primary: the admin unlinked or deleted the
+    // main one. Appending to an arbitrary derived collection would scatter the
+    // channel, so this needs a human decision.
+    if (!existing && family.length > 0) {
+      console.log(
+        `${position} ${channel.name}: ${family.length} colecciones del canal pero ninguna principal, se omite`
+      );
+      skipped += 1;
+      continue;
     }
 
     if (!existing) {
@@ -454,6 +467,7 @@ async function main() {
           okru_channel_id: channel.id,
           okru_channel_name: channel.name,
           okru_channel_url: channel.url,
+          okru_channel_primary: true,
         })
         .select("id")
         .single();
@@ -503,10 +517,14 @@ async function main() {
     const label =
       existing.title === channel.name ? channel.name : `${existing.title} (${channel.name})`;
 
-    const { data: existingEpisodeRows, error: episodesLookupError } = await supabase!
+    // Episodes of every collection of this channel, not just the primary one:
+    // a video moved into a collection of its own is still imported, and must
+    // not come back here.
+    const familyIds = family.length > 0 ? family.map((row) => row.id) : [mediaItemId];
+    const { data: familyEpisodeRows, error: episodesLookupError } = await supabase!
       .from("episodes")
-      .select("episode_number, season_number, okru_embed_url, streamed_at")
-      .eq("media_item_id", mediaItemId);
+      .select("media_item_id, episode_number, season_number, okru_embed_url, streamed_at")
+      .in("media_item_id", familyIds);
 
     if (episodesLookupError) {
       console.error(`${position} ${label}: error leyendo episodios —`, episodesLookupError.message);
@@ -514,24 +532,38 @@ async function main() {
       continue;
     }
 
-    const existingEpisodes = (existingEpisodeRows ?? []) as ExistingEpisode[];
+    const familyEpisodes = (familyEpisodeRows ?? []) as (ExistingEpisode & {
+      media_item_id: string;
+    })[];
+    const existingEpisodes = familyEpisodes.filter(
+      (episode) => episode.media_item_id === mediaItemId
+    );
+
     const knownVideoIds = new Set(
-      existingEpisodes
-        .map((episode) => videoIdFromEmbedUrl(episode.okru_embed_url))
+      [
+        // Movies and other single-video collections keep their video on the
+        // item itself, with no episode row to find it by.
+        ...family.map((row) => row.okru_embed_url),
+        ...familyEpisodes.map((episode) => episode.okru_embed_url),
+      ]
+        .map((url) => (url ? videoIdFromEmbedUrl(url) : null))
         .filter((id): id is string => Boolean(id))
     );
     const newVideos = videos.filter((video) => !knownVideoIds.has(video.id));
 
-    // Includes dates typed by the admin on episodes ok.ru never dated.
+    // Only what this collection ends up holding: dates already stored (typed by
+    // the admin, in some cases) plus the videos about to be appended. Videos
+    // that now live in a collection of their own are somebody else's range.
     const [rangeStart, rangeEnd] = streamRangeOf([
       ...existingEpisodes.map((episode) => episode.streamed_at),
-      ...videos.map((video) => video.streamedAt),
+      ...newVideos.map((video) => video.streamedAt),
     ]);
 
     const refresh: Record<string, unknown> = {
       okru_channel_id: channel.id,
       okru_channel_name: channel.name,
       okru_channel_url: channel.url,
+      okru_channel_primary: true,
       first_streamed_at: rangeStart,
       last_streamed_at: rangeEnd,
     };
@@ -556,7 +588,10 @@ async function main() {
 
     if (newVideos.length === 0) {
       unchanged += 1;
-      console.log(`${position} ${label}: sin videos nuevos (${existingEpisodes.length})`);
+      const split = family.length > 1 ? ` · ${family.length} colecciones del canal` : "";
+      console.log(
+        `${position} ${label}: sin videos nuevos (${existingEpisodes.length} episodios)${split}`
+      );
       continue;
     }
 

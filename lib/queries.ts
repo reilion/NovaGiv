@@ -41,6 +41,7 @@ interface MediaItemRow {
   okru_channel_id: string | null;
   okru_channel_name: string | null;
   okru_channel_url: string | null;
+  okru_channel_primary: boolean | null;
   created_at: string;
   episodes: EpisodeRow[] | null;
 }
@@ -80,6 +81,7 @@ function mapMediaItem(row: MediaItemRow): MediaItem {
     okruChannelId: row.okru_channel_id ?? undefined,
     okruChannelName: row.okru_channel_name ?? undefined,
     okruChannelUrl: row.okru_channel_url ?? undefined,
+    okruChannelPrimary: row.okru_channel_primary ?? undefined,
     createdAt: row.created_at,
     episodes: row.episodes?.length
       ? row.episodes

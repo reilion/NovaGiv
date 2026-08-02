@@ -25,8 +25,10 @@ export interface LinkableOkRuChannel {
   url: string;
   thumbnailUrl?: string;
   videoCount?: number;
-  /** Title of the collection already using this channel, if any — it can't be linked twice. */
+  /** Title of the collection that receives this channel's new videos, if it already exists. */
   linkedTo?: string;
+  /** How many collections were built from this channel — more than one after splitting it. */
+  linkedCount?: number;
 }
 
 export interface LinkableChannelsResult {
@@ -50,9 +52,10 @@ interface OkRuChannelRow {
 /**
  * Channels the admin can attach to an existing collection — for the ones
  * imported before the channel id was stored, whose title no longer resembles
- * the channel's. Reads the catalogue filled by `pnpm okru:sync`; if that has
- * never run, falls back to scraping the profile page (capped at 20 by ok.ru's
- * lazy loading, hence the `source` flag).
+ * the channel's, and for collections split off a channel by hand. Reads the
+ * catalogue filled by `pnpm okru:sync`; if that has never run, falls back to
+ * scraping the profile page (capped at 20 by ok.ru's lazy loading, hence the
+ * `source` flag).
  */
 export async function listLinkableOkRuChannels(): Promise<LinkableChannelsResult> {
   const supabase = await requireAdminClient();
@@ -61,15 +64,26 @@ export async function listLinkableOkRuChannels(): Promise<LinkableChannelsResult
     supabase.from("okru_channels").select("*").order("name"),
     supabase
       .from("media_items")
-      .select("title, okru_channel_id")
+      .select("title, okru_channel_id, okru_channel_primary")
       .not("okru_channel_id", "is", null),
   ]);
 
   if (error) return { error: error.message };
 
-  const linkedByChannel = new Map<string, string>(
-    (linkedRows ?? []).map((row) => [row.okru_channel_id as string, row.title as string])
-  );
+  // Several collections may come from one channel; the primary is the one
+  // worth naming, since it's where the sync keeps adding videos.
+  const primaryByChannel = new Map<string, string>();
+  const countByChannel = new Map<string, number>();
+  for (const row of linkedRows ?? []) {
+    const channelId = row.okru_channel_id as string;
+    countByChannel.set(channelId, (countByChannel.get(channelId) ?? 0) + 1);
+    if (row.okru_channel_primary) primaryByChannel.set(channelId, row.title as string);
+  }
+
+  const linkage = (channelId: string) => ({
+    linkedTo: primaryByChannel.get(channelId),
+    linkedCount: countByChannel.get(channelId),
+  });
 
   if (channelRows && channelRows.length > 0) {
     return {
@@ -80,7 +94,7 @@ export async function listLinkableOkRuChannels(): Promise<LinkableChannelsResult
         url: row.url,
         thumbnailUrl: row.thumbnail_url ?? undefined,
         videoCount: row.video_count ?? undefined,
-        linkedTo: linkedByChannel.get(row.id),
+        ...linkage(row.id),
       })),
     };
   }
@@ -91,7 +105,7 @@ export async function listLinkableOkRuChannels(): Promise<LinkableChannelsResult
       source: "live",
       channels: channels.map((channel) => ({
         ...channel,
-        linkedTo: linkedByChannel.get(channel.id),
+        ...linkage(channel.id),
       })),
     };
   } catch (fetchError) {

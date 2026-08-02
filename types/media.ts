@@ -56,6 +56,12 @@ export interface MediaItem {
   /** The channel's name on ok.ru — the original name, kept after renaming the collection. */
   okruChannelName?: string;
   okruChannelUrl?: string;
+  /**
+   * True on the one collection per channel that `pnpm okru:sync` appends new
+   * videos to. The others were split out of it (e.g. a movie of its own) and
+   * keep the reference only as provenance.
+   */
+  okruChannelPrimary?: boolean;
 }
 
 /** The ok.ru origin of a collection, as edited in the admin form. */
@@ -63,6 +69,54 @@ export interface OkRuChannelRef {
   id: string;
   name: string;
   url?: string;
+}
+
+/** One episode as edited in the admin form. */
+export interface EpisodeInput {
+  seasonNumber?: number;
+  episodeNumber: number;
+  title: string;
+  okRuEmbedUrl: string;
+  duration?: string;
+  thumbnailUrl?: string;
+  /** "YYYY-MM-DD" or "YYYY-MM-DDTHH:MM:SS"; drives the collection's date range. */
+  streamedAt?: string;
+  /**
+   * Set when the episode was pulled from another collection of the same
+   * channel: the row with this id is removed from that collection when this
+   * one is saved, so a video never ends up in two places.
+   */
+  claimedFromEpisodeId?: string;
+}
+
+/** Everything the admin form writes for one collection. */
+export interface MediaFormInput {
+  id?: string;
+  title: string;
+  slug: string;
+  type: MediaType;
+  posterUrl: string;
+  genres: string[];
+  year?: number;
+  description?: string;
+  duration?: string;
+  okRuEmbedUrl?: string;
+  status?: MediaStatus;
+  rating?: number;
+  /** Hidden from the public catalog while false — e.g. an ok.ru import awaiting review. */
+  published: boolean;
+  episodes: EpisodeInput[];
+  /**
+   * Stream date of a single-video collection (movie, special, karaoke). For
+   * episodic ones the range is derived from the episodes instead.
+   */
+  streamedAt?: string;
+  /**
+   * ok.ru channel this collection comes from. Persisted so `pnpm okru:sync`
+   * can find the collection again after it has been renamed here. Null clears
+   * the link; undefined leaves whatever is stored untouched.
+   */
+  okruChannel?: OkRuChannelRef | null;
 }
 
 export const MEDIA_TYPE_LABELS: Record<MediaType, string> = {

@@ -22,6 +22,14 @@ create table if not exists media_items (
   -- converting them to UTC would slide a 00:19 stream to the previous day.
   first_streamed_at timestamp,
   last_streamed_at timestamp,
+  -- Origin channel on ok.ru ("c1234567890"). This — not the title or the slug —
+  -- is what `pnpm okru:sync` matches on, so renaming a collection here never
+  -- makes the next sync create a duplicate; it just appends the new videos.
+  okru_channel_id text,
+  -- The channel's name on ok.ru, kept as it is there. Shown in the admin form
+  -- so the original name stays visible after the collection is renamed.
+  okru_channel_name text,
+  okru_channel_url text,
   created_at timestamptz not null default now()
 );
 
@@ -29,6 +37,28 @@ create table if not exists media_items (
 alter table media_items add column if not exists published boolean not null default true;
 alter table media_items add column if not exists first_streamed_at timestamp;
 alter table media_items add column if not exists last_streamed_at timestamp;
+alter table media_items add column if not exists okru_channel_id text;
+alter table media_items add column if not exists okru_channel_name text;
+alter table media_items add column if not exists okru_channel_url text;
+
+-- One collection per channel. Partial so the many rows with no channel
+-- (hand-made titles) don't collide on null.
+create unique index if not exists media_items_okru_channel_id_key
+  on media_items (okru_channel_id)
+  where okru_channel_id is not null;
+
+-- Catalogue of the channels seen on the streamer's ok.ru profile, refreshed by
+-- `pnpm okru:sync`. Its only job is to power the "link this collection to a
+-- channel" picker in /admin for collections imported before the id was stored
+-- (or created by hand).
+create table if not exists okru_channels (
+  id text primary key,
+  name text not null,
+  url text not null,
+  thumbnail_url text,
+  video_count int,
+  last_seen_at timestamptz not null default now()
+);
 
 create table if not exists episodes (
   id uuid primary key default gen_random_uuid(),
@@ -55,6 +85,7 @@ create index if not exists media_items_last_streamed_at_idx on media_items (last
 
 alter table media_items enable row level security;
 alter table episodes enable row level security;
+alter table okru_channels enable row level security;
 
 -- Public catalog: only published rows are visible without a session.
 -- Drafts (published = false) — e.g. ok.ru imports awaiting review — stay
@@ -89,6 +120,15 @@ create policy "Authenticated write access on media_items"
 drop policy if exists "Authenticated write access on episodes" on episodes;
 create policy "Authenticated write access on episodes"
   on episodes for all
+  to authenticated
+  using (true)
+  with check (true);
+
+-- Admin-only: the channel catalogue is a tool for the import panel, nothing on
+-- the public site reads it.
+drop policy if exists "Authenticated access on okru_channels" on okru_channels;
+create policy "Authenticated access on okru_channels"
+  on okru_channels for all
   to authenticated
   using (true)
   with check (true);

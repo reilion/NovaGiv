@@ -3,6 +3,13 @@
  * profile into Supabase as unpublished drafts, ready to be renamed/completed
  * and published from /admin.
  *
+ * Re-runs are incremental: collections are matched by the ok.ru channel id
+ * stored in `media_items.okru_channel_id`, never by title or slug, so a
+ * collection renamed in /admin is still recognised. For those, the script only
+ * appends the videos that aren't in the database yet — every field the admin
+ * edited (title, poster, genres, episode titles, published state…) is left
+ * alone.
+ *
  * Run locally:  pnpm okru:sync
  *               pnpm okru:sync --dry-run   (scrape + report, write nothing)
  *               pnpm okru:sync --limit 5   (only the first N channels)
@@ -64,6 +71,58 @@ interface ScrapedVideo {
   thumbnailUrl?: string;
   /** Parsed from the ok.ru title; absent when the title carries no date. */
   streamedAt?: string;
+}
+
+/** The subset of an existing collection this script needs to decide what to do with it. */
+interface ExistingMediaItem {
+  id: string;
+  title: string;
+  published: boolean;
+  okru_channel_id: string | null;
+  okru_channel_name: string | null;
+}
+
+interface ExistingEpisode {
+  episode_number: number;
+  season_number: number | null;
+  okru_embed_url: string;
+  streamed_at: string | null;
+}
+
+const VIDEO_ID_IN_EMBED = /\/videoembed\/(\d+)/;
+
+function videoIdFromEmbedUrl(url: string): string | null {
+  return url.match(VIDEO_ID_IN_EMBED)?.[1] ?? null;
+}
+
+/** Earliest/latest of a set of "YYYY-MM-DD…" strings — lexicographic order is chronological. */
+function streamRangeOf(dates: (string | null | undefined)[]): [string | null, string | null] {
+  const sorted = dates.filter((date): date is string => Boolean(date)).sort();
+  return [sorted[0] ?? null, sorted[sorted.length - 1] ?? null];
+}
+
+/**
+ * Where to continue numbering when appending videos to a collection that
+ * already has episodes: after the last one, inside its season, so the
+ * (media_item_id, season_number, episode_number) unique constraint holds and
+ * seasons the admin set up stay intact.
+ */
+function nextEpisodeSlot(episodes: ExistingEpisode[]): {
+  seasonNumber: number | null;
+  episodeNumber: number;
+} {
+  if (episodes.length === 0) return { seasonNumber: null, episodeNumber: 1 };
+
+  const last = [...episodes].sort(
+    (a, b) =>
+      (a.season_number ?? 0) - (b.season_number ?? 0) || a.episode_number - b.episode_number
+  )[episodes.length - 1];
+
+  const highestInSeason = episodes
+    .filter((episode) => episode.season_number === last.season_number)
+    .reduce((max, episode) => Math.max(max, episode.episode_number), 0);
+
+  return { seasonNumber: last.season_number, episodeNumber: highestInSeason + 1 };
 }
 
 /**
@@ -296,8 +355,26 @@ async function main() {
       (channels.length !== allChannels.length ? ` (procesando ${channels.length})` : "")
   );
 
+  // The channel catalogue behind the "link this collection to a channel"
+  // picker in /admin — the only way to repair a collection imported before the
+  // channel id was stored.
+  if (!DRY_RUN && allChannels.length > 0) {
+    const { error } = await supabase!.from("okru_channels").upsert(
+      allChannels.map((channel) => ({
+        id: channel.id,
+        name: channel.name,
+        url: channel.url,
+        thumbnail_url: channel.thumbnailUrl ?? null,
+        video_count: channel.videoCount ?? null,
+        last_seen_at: new Date().toISOString(),
+      }))
+    );
+    if (error) console.error("No se pudo guardar el catálogo de canales —", error.message);
+  }
+
   let created = 0;
   let updated = 0;
+  let unchanged = 0;
   let skipped = 0;
 
   for (const [index, channel] of channels.entries()) {
@@ -330,10 +407,12 @@ async function main() {
 
     const slug = slugify(`${channel.name}-${channel.id}`);
 
-    const { data: existing, error: lookupError } = await supabase!
+    // The channel id is the durable link: the admin is expected to rename
+    // these collections (and their slug) once imported.
+    const { data: byChannel, error: lookupError } = await supabase!
       .from("media_items")
-      .select("id, published")
-      .eq("slug", slug)
+      .select("id, title, published, okru_channel_id, okru_channel_name")
+      .eq("okru_channel_id", channel.id)
       .maybeSingle();
 
     if (lookupError) {
@@ -342,57 +421,151 @@ async function main() {
       continue;
     }
 
-    // Never silently un-publish something the admin already finished.
-    if (existing?.published) {
-      console.log(`${position} ${channel.name}: ya publicado, se respeta`);
-      skipped += 1;
-      continue;
+    let existing = byChannel as ExistingMediaItem | null;
+
+    // Collections imported before the channel id was stored: adopt the one
+    // still sitting on the slug this script would generate, so it gets the
+    // link instead of being duplicated. Rows already tied to another channel
+    // are left alone.
+    if (!existing) {
+      const { data: bySlug } = await supabase!
+        .from("media_items")
+        .select("id, title, published, okru_channel_id, okru_channel_name")
+        .eq("slug", slug)
+        .maybeSingle();
+      const candidate = bySlug as ExistingMediaItem | null;
+      if (candidate && !candidate.okru_channel_id) existing = candidate;
     }
 
-    const row = {
-      title: channel.name,
-      slug,
-      type: "series" as const,
-      poster_url: channel.thumbnailUrl ?? videos[0]?.thumbnailUrl ?? "",
-      genres: [] as string[],
-      description: null,
-      status: "ongoing" as const,
-      published: false,
-      first_streamed_at: firstStreamedAt,
-      last_streamed_at: lastStreamedAt,
-    };
-
-    let mediaItemId: string;
-    if (existing) {
-      mediaItemId = existing.id as string;
-      const { error } = await supabase!.from("media_items").update(row).eq("id", mediaItemId);
-      if (error) {
-        console.error(`${position} ${channel.name}: error actualizando —`, error.message);
-        skipped += 1;
-        continue;
-      }
-      await supabase!.from("episodes").delete().eq("media_item_id", mediaItemId);
-      updated += 1;
-    } else {
+    if (!existing) {
       const { data, error } = await supabase!
         .from("media_items")
-        .insert(row)
+        .insert({
+          title: channel.name,
+          slug,
+          type: "series" as const,
+          poster_url: channel.thumbnailUrl ?? videos[0]?.thumbnailUrl ?? "",
+          genres: [] as string[],
+          description: null,
+          status: "ongoing" as const,
+          published: false,
+          first_streamed_at: firstStreamedAt,
+          last_streamed_at: lastStreamedAt,
+          okru_channel_id: channel.id,
+          okru_channel_name: channel.name,
+          okru_channel_url: channel.url,
+        })
         .select("id")
         .single();
+
       if (error || !data) {
         console.error(`${position} ${channel.name}: error creando —`, error?.message);
         skipped += 1;
         continue;
       }
-      mediaItemId = data.id as string;
+
+      const { error: episodesError } = await supabase!.from("episodes").insert(
+        videos.map((video, i) => ({
+          media_item_id: data.id as string,
+          episode_number: i + 1,
+          season_number: null,
+          title: video.title,
+          okru_embed_url: `https://ok.ru/videoembed/${video.id}`,
+          duration: video.duration ?? null,
+          thumbnail_url: video.thumbnailUrl ?? null,
+          streamed_at: video.streamedAt ?? null,
+        }))
+      );
+
+      if (episodesError) {
+        console.error(
+          `${position} ${channel.name}: error guardando episodios —`,
+          episodesError.message
+        );
+        continue;
+      }
+
       created += 1;
+      const expected = channel.videoCount;
+      const warn = expected && videos.length !== expected ? ` (ok.ru decía ${expected})` : "";
+      const range = formatStreamRange(firstStreamedAt ?? undefined, lastStreamedAt ?? undefined);
+      console.log(
+        `${position} ${channel.name}: nuevo · ${videos.length} episodios${warn}` +
+          `${range ? ` · ${range}` : ""}`
+      );
+      continue;
     }
 
-    const { error: episodesError } = await supabase!.from("episodes").insert(
-      videos.map((video, i) => ({
+    // From here on the collection already exists and may have been edited by
+    // hand, so nothing it owns gets overwritten — only the missing videos are
+    // appended.
+    const mediaItemId = existing.id;
+    const label =
+      existing.title === channel.name ? channel.name : `${existing.title} (${channel.name})`;
+
+    const { data: existingEpisodeRows, error: episodesLookupError } = await supabase!
+      .from("episodes")
+      .select("episode_number, season_number, okru_embed_url, streamed_at")
+      .eq("media_item_id", mediaItemId);
+
+    if (episodesLookupError) {
+      console.error(`${position} ${label}: error leyendo episodios —`, episodesLookupError.message);
+      skipped += 1;
+      continue;
+    }
+
+    const existingEpisodes = (existingEpisodeRows ?? []) as ExistingEpisode[];
+    const knownVideoIds = new Set(
+      existingEpisodes
+        .map((episode) => videoIdFromEmbedUrl(episode.okru_embed_url))
+        .filter((id): id is string => Boolean(id))
+    );
+    const newVideos = videos.filter((video) => !knownVideoIds.has(video.id));
+
+    // Includes dates typed by the admin on episodes ok.ru never dated.
+    const [rangeStart, rangeEnd] = streamRangeOf([
+      ...existingEpisodes.map((episode) => episode.streamed_at),
+      ...videos.map((video) => video.streamedAt),
+    ]);
+
+    const refresh: Record<string, unknown> = {
+      okru_channel_id: channel.id,
+      okru_channel_name: channel.name,
+      okru_channel_url: channel.url,
+      first_streamed_at: rangeStart,
+      last_streamed_at: rangeEnd,
+    };
+
+    // The title only follows ok.ru while it still matches the channel name —
+    // i.e. while the admin hasn't renamed the collection. The slug never
+    // changes: public links point at it.
+    if (existing.okru_channel_name && existing.title === existing.okru_channel_name) {
+      refresh.title = channel.name;
+    }
+
+    const { error: updateError } = await supabase!
+      .from("media_items")
+      .update(refresh)
+      .eq("id", mediaItemId);
+
+    if (updateError) {
+      console.error(`${position} ${label}: error actualizando —`, updateError.message);
+      skipped += 1;
+      continue;
+    }
+
+    if (newVideos.length === 0) {
+      unchanged += 1;
+      console.log(`${position} ${label}: sin videos nuevos (${existingEpisodes.length})`);
+      continue;
+    }
+
+    const slot = nextEpisodeSlot(existingEpisodes);
+    const { error: insertError } = await supabase!.from("episodes").insert(
+      newVideos.map((video, i) => ({
         media_item_id: mediaItemId,
-        episode_number: i + 1,
-        season_number: null,
+        episode_number: slot.episodeNumber + i,
+        season_number: slot.seasonNumber,
         title: video.title,
         okru_embed_url: `https://ok.ru/videoembed/${video.id}`,
         duration: video.duration ?? null,
@@ -401,17 +574,18 @@ async function main() {
       }))
     );
 
-    if (episodesError) {
-      console.error(`${position} ${channel.name}: error guardando episodios —`, episodesError.message);
-    } else {
-      const expected = channel.videoCount;
-      const warn = expected && videos.length !== expected ? ` (ok.ru decía ${expected})` : "";
-      const range = formatStreamRange(firstStreamedAt ?? undefined, lastStreamedAt ?? undefined);
-      console.log(
-        `${position} ${channel.name}: ${videos.length} episodios${warn}` +
-          `${range ? ` · ${range}` : ""}`
-      );
+    if (insertError) {
+      console.error(`${position} ${label}: error añadiendo episodios —`, insertError.message);
+      skipped += 1;
+      continue;
     }
+
+    updated += 1;
+    const draftNote = existing.published ? "" : " · sigue en borrador";
+    console.log(
+      `${position} ${label}: +${newVideos.length} episodio${newVideos.length === 1 ? "" : "s"}` +
+        ` (total ${existingEpisodes.length + newVideos.length})${draftNote}`
+    );
   }
 
   await browser.close();
@@ -420,8 +594,10 @@ async function main() {
     console.log("\nDry-run terminado. No se escribió nada en Supabase.");
   } else {
     console.log(
-      `\nListo. Creados: ${created} · Actualizados: ${updated} · Omitidos: ${skipped}` +
-        `\nTodos quedan como BORRADOR en /admin — publícalos cuando termines de completarlos.`
+      `\nListo. Creados: ${created} · Con videos nuevos: ${updated} · Sin cambios: ${unchanged}` +
+        ` · Omitidos: ${skipped}` +
+        `\nLos nuevos quedan como BORRADOR en /admin — publícalos cuando termines de completarlos.` +
+        `\nLos que ya existían conservan su título, póster y estado: solo se les añadieron los videos nuevos.`
     );
   }
 }

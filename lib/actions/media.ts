@@ -6,7 +6,7 @@ import { redirect } from "next/navigation";
 import { requireAdminClient } from "@/lib/actions/require-admin";
 import { MOCK_MEDIA } from "@/lib/mock-data";
 import { toOkRuEmbedUrl } from "@/lib/okru";
-import type { MediaStatus, MediaType } from "@/types/media";
+import type { MediaStatus, MediaType, OkRuChannelRef } from "@/types/media";
 
 export interface EpisodeInput {
   seasonNumber?: number;
@@ -34,10 +34,28 @@ export interface MediaFormInput {
   /** Hidden from the public catalog while false — e.g. an ok.ru import awaiting review. */
   published: boolean;
   episodes: EpisodeInput[];
+  /**
+   * ok.ru channel this collection comes from. Persisted so `pnpm okru:sync`
+   * can find the collection again after it has been renamed here. Null clears
+   * the link; undefined leaves whatever is stored untouched.
+   */
+  okruChannel?: OkRuChannelRef | null;
 }
 
 export interface ActionResult {
   error?: string;
+}
+
+/** Turns Postgres' unique-violation jargon into something actionable in the form. */
+function describeWriteError(error: { code?: string; message: string }): string {
+  if (error.code !== "23505") return error.message;
+  if (error.message.includes("okru_channel_id")) {
+    return "Ese canal de ok.ru ya está vinculado a otra colección. Desvincúlalo allí primero.";
+  }
+  if (error.message.includes("slug")) {
+    return "Ya existe otro título con ese slug.";
+  }
+  return error.message;
 }
 
 export async function upsertMediaItem(input: MediaFormInput): Promise<ActionResult> {
@@ -76,20 +94,31 @@ export async function upsertMediaItem(input: MediaFormInput): Promise<ActionResu
     published: input.published,
     first_streamed_at: streamDates[0] ?? null,
     last_streamed_at: streamDates[streamDates.length - 1] ?? null,
+    // Omitted (not null) when the caller doesn't manage the link, so an update
+    // from a form that never loaded it can't wipe it.
+    ...(input.okruChannel === undefined
+      ? {}
+      : {
+          okru_channel_id: input.okruChannel?.id ?? null,
+          okru_channel_name: input.okruChannel?.name ?? null,
+          okru_channel_url: input.okruChannel?.url ?? null,
+        }),
   };
 
   let mediaItemId = input.id;
 
   if (mediaItemId) {
     const { error } = await supabase.from("media_items").update(row).eq("id", mediaItemId);
-    if (error) return { error: error.message };
+    if (error) return { error: describeWriteError(error) };
   } else {
     const { data, error } = await supabase
       .from("media_items")
       .insert(row)
       .select("id")
       .single();
-    if (error || !data) return { error: error?.message ?? "No se pudo crear el título." };
+    if (error || !data) {
+      return { error: error ? describeWriteError(error) : "No se pudo crear el título." };
+    }
     mediaItemId = data.id as string;
   }
 

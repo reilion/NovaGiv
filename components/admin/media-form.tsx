@@ -4,6 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { CalendarSearch, Plus, Trash2 } from "lucide-react";
 
+import { OkRuChannelPicker } from "@/components/admin/okru-channel-picker";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -27,6 +28,7 @@ import {
   type MediaItem,
   type MediaStatus,
   type MediaType,
+  type OkRuChannelRef,
 } from "@/types/media";
 
 /** Prefill for a brand-new title — e.g. from the ok.ru import wizard. Ignored when `item` is set. */
@@ -37,6 +39,8 @@ interface MediaFormInitialValues {
   genres?: string[];
   published?: boolean;
   episodes?: EpisodeInput[];
+  /** Channel the wizard imported from, so the new collection is linked from the start. */
+  okruChannel?: OkRuChannelRef;
 }
 
 interface MediaFormProps {
@@ -77,6 +81,16 @@ export function MediaForm({ item, initialValues }: MediaFormProps) {
   const [okRuEmbedUrl, setOkRuEmbedUrl] = useState(item?.okRuEmbedUrl ?? "");
   const [status, setStatus] = useState<MediaStatus>(item?.status ?? "ongoing");
   const [published, setPublished] = useState(item?.published ?? initialValues?.published ?? true);
+  const [okruChannel, setOkruChannel] = useState<OkRuChannelRef | null>(() => {
+    if (item?.okruChannelId) {
+      return {
+        id: item.okruChannelId,
+        name: item.okruChannelName ?? item.okruChannelId,
+        url: item.okruChannelUrl,
+      };
+    }
+    return initialValues?.okruChannel ?? null;
+  });
   const [episodes, setEpisodes] = useState<EpisodeDraft[]>(() => {
     if (item?.episodes) {
       return item.episodes.map((episode) => ({
@@ -220,6 +234,7 @@ export function MediaForm({ item, initialValues }: MediaFormProps) {
         okRuEmbedUrl: episodic ? undefined : okRuEmbedUrl || undefined,
         status: episodic ? status : undefined,
         published,
+        okruChannel,
         episodes: episodic
           ? episodes.map((episode) => ({
               seasonNumber: episode.seasonNumber,
@@ -343,6 +358,24 @@ export function MediaForm({ item, initialValues }: MediaFormProps) {
               rows={3}
             />
           </Field>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Canal de ok.ru</CardTitle>
+          <CardDescription>
+            De dónde salió esta colección. <code>pnpm okru:sync</code> se guía por este
+            canal (no por el título), así que puedes renombrarla aquí sin perder la
+            referencia: las siguientes sincronizaciones solo añadirán los videos nuevos.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <OkRuChannelPicker
+            value={okruChannel}
+            onChange={setOkruChannel}
+            savedChannelId={item?.okruChannelId}
+          />
         </CardContent>
       </Card>
 

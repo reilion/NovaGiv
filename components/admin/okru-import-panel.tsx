@@ -185,6 +185,15 @@ export function OkRuImportPanel({ hasSession }: { hasSession: boolean }) {
             type: "series",
             posterUrl: videos[0]?.thumbnailUrl,
             published: false,
+            // Linked from the start so a later rename here doesn't make
+            // `pnpm okru:sync` import the same channel a second time.
+            okruChannel: selectedChannel
+              ? {
+                  id: selectedChannel.id,
+                  name: selectedChannel.name,
+                  url: selectedChannel.url,
+                }
+              : undefined,
             episodes: videos.map((video, index) => ({
               episodeNumber: index + 1,
               title: video.title,

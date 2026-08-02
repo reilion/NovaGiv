@@ -47,6 +47,22 @@ export interface MediaItem {
   firstStreamedAt?: string;
   /** Newest stream date across this collection's episodes. */
   lastStreamedAt?: string;
+  /**
+   * ok.ru channel this collection was imported from ("c1234567890"). Stable
+   * across renames on both sides, so `pnpm okru:sync` keeps matching the same
+   * collection and only appends its new videos.
+   */
+  okruChannelId?: string;
+  /** The channel's name on ok.ru — the original name, kept after renaming the collection. */
+  okruChannelName?: string;
+  okruChannelUrl?: string;
+}
+
+/** The ok.ru origin of a collection, as edited in the admin form. */
+export interface OkRuChannelRef {
+  id: string;
+  name: string;
+  url?: string;
 }
 
 export const MEDIA_TYPE_LABELS: Record<MediaType, string> = {

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { requireAdminClient } from "@/lib/actions/require-admin";
-import { writeMediaItem } from "@/lib/media-write";
+import { viewCountsByEmbedUrl, writeMediaItem } from "@/lib/media-write";
 import { MOCK_MEDIA } from "@/lib/mock-data";
 import type { MediaFormInput } from "@/types/media";
 
@@ -82,6 +82,13 @@ export async function seedMockData(): Promise<ActionResult> {
 
     let mediaItemId: string;
 
+    // Re-seeding replaces the episode rows, so their counters are carried over
+    // the same way a save from the admin form does it.
+    const carriedViews = await viewCountsByEmbedUrl(
+      supabase,
+      (item.episodes ?? []).map((episode) => episode.okRuEmbedUrl)
+    );
+
     if (existing) {
       mediaItemId = existing.id as string;
       const { error } = await supabase.from("media_items").update(row).eq("id", mediaItemId);
@@ -106,6 +113,7 @@ export async function seedMockData(): Promise<ActionResult> {
         okru_embed_url: episode.okRuEmbedUrl,
         duration: episode.duration ?? null,
         streamed_at: episode.streamedAt ?? null,
+        view_count: carriedViews.get(episode.okRuEmbedUrl) ?? 0,
       }));
       const { error } = await supabase.from("episodes").insert(episodeRows);
       if (error) return { error: error.message };

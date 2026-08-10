@@ -20,6 +20,7 @@ interface EpisodeRow {
   duration: string | null;
   thumbnail_url: string | null;
   streamed_at: string | null;
+  view_count: number | null;
 }
 
 interface MediaItemRow {
@@ -42,6 +43,7 @@ interface MediaItemRow {
   okru_channel_name: string | null;
   okru_channel_url: string | null;
   okru_channel_primary: boolean | null;
+  view_count: number | null;
   created_at: string;
   episodes: EpisodeRow[] | null;
 }
@@ -58,6 +60,7 @@ function mapEpisode(row: EpisodeRow): Episode {
     // Postgres returns "2026-07-28T00:19:09" for `timestamp` columns; keep it
     // as a plain string so no timezone conversion ever happens.
     streamedAt: row.streamed_at ?? undefined,
+    views: row.view_count ?? 0,
   };
 }
 
@@ -82,6 +85,7 @@ function mapMediaItem(row: MediaItemRow): MediaItem {
     okruChannelName: row.okru_channel_name ?? undefined,
     okruChannelUrl: row.okru_channel_url ?? undefined,
     okruChannelPrimary: row.okru_channel_primary ?? undefined,
+    views: row.view_count ?? 0,
     createdAt: row.created_at,
     episodes: row.episodes?.length
       ? row.episodes

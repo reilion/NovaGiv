@@ -37,17 +37,84 @@ export function streamRangeOf(dates: (string | null | undefined)[]): [string | n
   return [sorted[0] ?? null, sorted[sorted.length - 1] ?? null];
 }
 
-export function episodeRowsFor(mediaItemId: string, episodes: EpisodeInput[]) {
-  return episodes.map((episode) => ({
-    media_item_id: mediaItemId,
-    episode_number: episode.episodeNumber,
-    season_number: episode.seasonNumber ?? null,
-    title: episode.title.trim(),
-    okru_embed_url: toOkRuEmbedUrl(episode.okRuEmbedUrl.trim()),
-    duration: episode.duration?.trim() || null,
-    thumbnail_url: episode.thumbnailUrl?.trim() || null,
-    streamed_at: episode.streamedAt?.trim() || null,
-  }));
+export function episodeRowsFor(
+  mediaItemId: string,
+  episodes: EpisodeInput[],
+  /** Plays already recorded for these videos, by embed url — see `viewCountsByEmbedUrl`. */
+  views?: Map<string, number>
+) {
+  return episodes.map((episode) => {
+    const embedUrl = toOkRuEmbedUrl(episode.okRuEmbedUrl.trim());
+    return {
+      media_item_id: mediaItemId,
+      episode_number: episode.episodeNumber,
+      season_number: episode.seasonNumber ?? null,
+      title: episode.title.trim(),
+      okru_embed_url: embedUrl,
+      duration: episode.duration?.trim() || null,
+      thumbnail_url: episode.thumbnailUrl?.trim() || null,
+      streamed_at: episode.streamedAt?.trim() || null,
+      view_count: views?.get(embedUrl) ?? 0,
+    };
+  });
+}
+
+/**
+ * Plays recorded so far for a set of ok.ru videos, keyed by embed url.
+ *
+ * The counter lives on the episode row, but saving a collection replaces every
+ * one of those rows, so the count has to be carried over by what identifies the
+ * video itself — its ok.ru URL. Looked up across the whole table, not just one
+ * collection, so a video pulled in from a sibling collection arrives with its
+ * views. Reading it always has to happen *before* the rows are deleted.
+ */
+export async function viewCountsByEmbedUrl(
+  supabase: SupabaseClient,
+  urls: string[]
+): Promise<Map<string, number>> {
+  const views = new Map<string, number>();
+  if (urls.length === 0) return views;
+
+  const { data } = await supabase
+    .from("episodes")
+    .select("okru_embed_url, view_count")
+    .in("okru_embed_url", urls);
+
+  for (const row of data ?? []) {
+    const url = row.okru_embed_url as string;
+    const count = (row.view_count as number | null) ?? 0;
+    // The same video can still sit in two collections mid-move; the higher
+    // count is the one that has been accumulating.
+    views.set(url, Math.max(views.get(url) ?? 0, count));
+  }
+
+  return views;
+}
+
+/**
+ * Moves the plays of a video that lived as an episode onto the collection that
+ * now stores it on the item itself — a movie split out of a channel. Call it
+ * while the episode row still exists; adding (not assigning) keeps whatever the
+ * collection had counted on its own.
+ */
+export async function carryEpisodeViewsToItem(
+  supabase: SupabaseClient,
+  mediaItemId: string,
+  embedUrl: string
+) {
+  const carried = (await viewCountsByEmbedUrl(supabase, [embedUrl])).get(embedUrl) ?? 0;
+  if (carried === 0) return;
+
+  const { data } = await supabase
+    .from("media_items")
+    .select("view_count")
+    .eq("id", mediaItemId)
+    .maybeSingle();
+
+  await supabase
+    .from("media_items")
+    .update({ view_count: ((data?.view_count as number | null) ?? 0) + carried })
+    .eq("id", mediaItemId);
 }
 
 /**
@@ -152,6 +219,12 @@ export async function writeMediaItem(
     mediaItemId = data.id as string;
   }
 
+  // Read before the delete below wipes the rows holding these counters.
+  const carriedViews = await viewCountsByEmbedUrl(
+    supabase,
+    input.episodes.map((episode) => toOkRuEmbedUrl(episode.okRuEmbedUrl.trim()))
+  );
+
   // Simplest way to keep the episode list in sync with a dynamic admin form:
   // replace them all rather than diffing add/edit/remove individually.
   const { error: deleteError } = await supabase
@@ -163,7 +236,7 @@ export async function writeMediaItem(
   if (input.episodes.length > 0) {
     const { error } = await supabase
       .from("episodes")
-      .insert(episodeRowsFor(mediaItemId, input.episodes));
+      .insert(episodeRowsFor(mediaItemId, input.episodes, carriedViews));
     if (error) return { error: error.message };
   }
 

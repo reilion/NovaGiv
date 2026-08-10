@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { requireAdminClient } from "@/lib/actions/require-admin";
-import { writeMediaItem } from "@/lib/media-write";
+import { carryEpisodeViewsToItem, writeMediaItem } from "@/lib/media-write";
+import { toOkRuEmbedUrl } from "@/lib/okru";
 import { slugify } from "@/lib/text";
 import { isEpisodic, type EpisodeInput, type MediaFormInput, type MediaType } from "@/types/media";
 
@@ -203,8 +204,18 @@ export async function extractEpisodeToCollection(
     return { error: created.error ?? "No se pudo crear la colección." };
   }
 
-  // A non-episodic collection stores the video on the item itself, so the
-  // claim has to be released here instead of through an episode row.
+  // A non-episodic collection stores the video on the item itself: there is no
+  // episode row on the new side to inherit the plays, so they are moved over
+  // explicitly — before the row that holds them is deleted.
+  if (!episodic) {
+    await carryEpisodeViewsToItem(
+      supabase,
+      created.id,
+      toOkRuEmbedUrl(episode.okRuEmbedUrl.trim())
+    );
+  }
+
+  // The claim has to be released here too, for the same reason.
   if (!episodic && episode.claimedFromEpisodeId) {
     await supabase.from("episodes").delete().eq("id", episode.claimedFromEpisodeId);
   }

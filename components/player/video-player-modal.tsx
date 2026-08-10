@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CalendarDays, Monitor, PlayCircle } from "lucide-react";
+import { CalendarDays, Eye, Monitor, PlayCircle } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -21,10 +21,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { registerVideoView } from "@/lib/actions/views";
 import { toOkRuEmbedUrl } from "@/lib/okru";
 import { formatStreamDate, formatStreamRange } from "@/lib/stream-date";
+import { formatViews, formatViewsLabel } from "@/lib/text";
 import { cn } from "@/lib/utils";
-import { isEpisodic, type Episode, type MediaItem } from "@/types/media";
+import { isEpisodic, totalViewsOf, type Episode, type MediaItem } from "@/types/media";
 
 /**
  * Preset player sizes. Each caps how much of the window height the picture may
@@ -61,6 +63,8 @@ const SIZE_ORDER = Object.keys(PLAYER_SIZES) as PlayerSize[];
 const DEFAULT_SIZE: PlayerSize = "medium";
 /** Remembered across titles: picking a size is a viewing preference, not a per-video one. */
 const SIZE_STORAGE_KEY = "novagiv:player-size";
+/** One key per video already counted in this session — see `useRegisterView`. */
+const VIEW_STORAGE_PREFIX = "novagiv:viewed:";
 
 function isPlayerSize(value: string | null): value is PlayerSize {
   return value !== null && value in PLAYER_SIZES;
@@ -71,6 +75,31 @@ function readStoredSize(): PlayerSize {
   if (typeof window === "undefined") return DEFAULT_SIZE;
   const stored = window.localStorage.getItem(SIZE_STORAGE_KEY);
   return isPlayerSize(stored) ? stored : DEFAULT_SIZE;
+}
+
+/**
+ * Counts the video on screen as viewed, once per video per browsing session.
+ *
+ * ok.ru's iframe never reports whether its video was actually played, so a view
+ * here is "opened in the player". The sessionStorage guard is what keeps that
+ * honest: flipping through episodes and coming back, or reopening a title while
+ * browsing the catalog, adds nothing the second time. It also absorbs the
+ * double run of this effect in development.
+ *
+ * The numbers on screen come from the server render, so the view just counted
+ * shows up on the next load of the catalog — nothing is bumped locally.
+ */
+function useRegisterView(mediaItemId: string, videoId: string | undefined, episodic: boolean) {
+  useEffect(() => {
+    if (!videoId) return;
+
+    const storageKey = `${VIEW_STORAGE_PREFIX}${videoId}`;
+    if (window.sessionStorage.getItem(storageKey)) return;
+    window.sessionStorage.setItem(storageKey, "1");
+
+    // The collection's own video has no episode row to count on.
+    void registerVideoView(mediaItemId, episodic ? videoId : undefined);
+  }, [mediaItemId, videoId, episodic]);
 }
 
 interface VideoPlayerModalProps {
@@ -118,6 +147,13 @@ function PlayerContent({ item }: { item: MediaItem }) {
   }
 
   const sizePreset = PLAYER_SIZES[size];
+
+  // Keyed by episode for a series, by the collection itself for a movie —
+  // exactly what the counters in the database are keyed by.
+  const playingVideoId = embedUrl ? (episodic ? activeEpisode?.id : item.id) : undefined;
+  useRegisterView(item.id, playingVideoId, episodic);
+
+  const totalViews = totalViewsOf(item);
 
   return (
     <DialogContent
@@ -176,6 +212,14 @@ function PlayerContent({ item }: { item: MediaItem }) {
                   {streamRange}
                 </Badge>
               )}
+              <Badge
+                variant="secondary"
+                className="gap-1"
+                title={episodic ? "Suma de las vistas de todos los episodios" : undefined}
+              >
+                <Eye className="size-3" />
+                {formatViewsLabel(totalViews)}
+              </Badge>
             </div>
             {item.description && (
               <DialogDescription className="text-sm">{item.description}</DialogDescription>
@@ -223,11 +267,16 @@ function PlayerContent({ item }: { item: MediaItem }) {
                             </span>
                           )}
                         </span>
-                        {episode.duration && (
-                          <span className="shrink-0 text-xs text-muted-foreground">
-                            {episode.duration}
+                        <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
+                          <span
+                            className="flex items-center gap-1"
+                            title={formatViewsLabel(episode.views ?? 0)}
+                          >
+                            <Eye className="size-3" />
+                            {formatViews(episode.views ?? 0)}
                           </span>
-                        )}
+                          {episode.duration && <span>{episode.duration}</span>}
+                        </span>
                       </button>
                     ))}
                   </div>

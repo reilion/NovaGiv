@@ -34,3 +34,18 @@ export function slugify(value: string): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
 }
+
+const COMPACT_VIEWS = new Intl.NumberFormat("es", {
+  notation: "compact",
+  maximumFractionDigits: 1,
+});
+
+/** "847", "1,2 mil", "3,4 M" — kept short because it sits on top of the poster. */
+export function formatViews(count: number): string {
+  return count < 1000 ? String(count) : COMPACT_VIEWS.format(count);
+}
+
+/** Full label for tooltips and the player header: "1 vista" / "1.204 vistas". */
+export function formatViewsLabel(count: number): string {
+  return `${count.toLocaleString("es")} ${count === 1 ? "vista" : "vistas"}`;
+}

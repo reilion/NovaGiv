@@ -38,6 +38,7 @@ export const MOCK_MEDIA: MediaItem[] = [
     createdAt: "2026-07-20T20:00:00.000Z",
     okRuEmbedUrl: "https://ok.ru/videoembed/0000000000001",
     duration: "1h 52m",
+    views: 2477,
     rating: 8.1,
   },
   {
@@ -52,6 +53,7 @@ export const MOCK_MEDIA: MediaItem[] = [
     createdAt: "2026-06-02T20:00:00.000Z",
     okRuEmbedUrl: "https://ok.ru/videoembed/0000000000002",
     duration: "2h 05m",
+    views: 1954,
     rating: 7.4,
   },
   {
@@ -70,11 +72,11 @@ export const MOCK_MEDIA: MediaItem[] = [
     status: "ongoing",
     rating: 8.6,
     episodes: [
-      { id: "3-s1e1", episodeNumber: 1, seasonNumber: 1, title: "El descenso", okRuEmbedUrl: "https://ok.ru/videoembed/0000000000010", duration: "42m", streamedAt: "2026-06-17T21:30:00" },
-      { id: "3-s1e2", episodeNumber: 2, seasonNumber: 1, title: "Ecos de piedra", okRuEmbedUrl: "https://ok.ru/videoembed/0000000000011", duration: "45m", streamedAt: "2026-06-24T21:30:00" },
-      { id: "3-s1e3", episodeNumber: 3, seasonNumber: 1, title: "El pacto", okRuEmbedUrl: "https://ok.ru/videoembed/0000000000012", duration: "40m", streamedAt: "2026-07-01T21:30:00" },
-      { id: "3-s2e1", episodeNumber: 1, seasonNumber: 2, title: "Nuevas grietas", okRuEmbedUrl: "https://ok.ru/videoembed/0000000000013", duration: "44m", streamedAt: "2026-07-08T21:30:00" },
-      { id: "3-s2e2", episodeNumber: 2, seasonNumber: 2, title: "El precio de la luz", okRuEmbedUrl: "https://ok.ru/videoembed/0000000000014", duration: "47m", streamedAt: "2026-07-15T21:30:00" },
+      { id: "3-s1e1", episodeNumber: 1, seasonNumber: 1, title: "El descenso", okRuEmbedUrl: "https://ok.ru/videoembed/0000000000010", duration: "42m", streamedAt: "2026-06-17T21:30:00", views: 570 },
+      { id: "3-s1e2", episodeNumber: 2, seasonNumber: 1, title: "Ecos de piedra", okRuEmbedUrl: "https://ok.ru/videoembed/0000000000011", duration: "45m", streamedAt: "2026-06-24T21:30:00", views: 747 },
+      { id: "3-s1e3", episodeNumber: 3, seasonNumber: 1, title: "El pacto", okRuEmbedUrl: "https://ok.ru/videoembed/0000000000012", duration: "40m", streamedAt: "2026-07-01T21:30:00", views: 524 },
+      { id: "3-s2e1", episodeNumber: 1, seasonNumber: 2, title: "Nuevas grietas", okRuEmbedUrl: "https://ok.ru/videoembed/0000000000013", duration: "44m", streamedAt: "2026-07-08T21:30:00", views: 701 },
+      { id: "3-s2e2", episodeNumber: 2, seasonNumber: 2, title: "El precio de la luz", okRuEmbedUrl: "https://ok.ru/videoembed/0000000000014", duration: "47m", streamedAt: "2026-07-15T21:30:00", views: 478 },
     ],
   },
   {
@@ -92,10 +94,10 @@ export const MOCK_MEDIA: MediaItem[] = [
     status: "completed",
     rating: 7.9,
     episodes: [
-      { id: "4-e1", episodeNumber: 1, title: "Ruido de fondo", okRuEmbedUrl: "https://ok.ru/videoembed/0000000000020", duration: "50m", streamedAt: "2026-04-27T21:30:00" },
-      { id: "4-e2", episodeNumber: 2, title: "Falsos positivos", okRuEmbedUrl: "https://ok.ru/videoembed/0000000000021", duration: "48m", streamedAt: "2026-05-04T21:30:00" },
-      { id: "4-e3", episodeNumber: 3, title: "Punto ciego", okRuEmbedUrl: "https://ok.ru/videoembed/0000000000022", duration: "51m", streamedAt: "2026-05-11T21:30:00" },
-      { id: "4-e4", episodeNumber: 4, title: "Cierre", okRuEmbedUrl: "https://ok.ru/videoembed/0000000000023", duration: "55m", streamedAt: "2026-05-18T21:30:00" },
+      { id: "4-e1", episodeNumber: 1, title: "Ruido de fondo", okRuEmbedUrl: "https://ok.ru/videoembed/0000000000020", duration: "50m", streamedAt: "2026-04-27T21:30:00", views: 740 },
+      { id: "4-e2", episodeNumber: 2, title: "Falsos positivos", okRuEmbedUrl: "https://ok.ru/videoembed/0000000000021", duration: "48m", streamedAt: "2026-05-04T21:30:00", views: 517 },
+      { id: "4-e3", episodeNumber: 3, title: "Punto ciego", okRuEmbedUrl: "https://ok.ru/videoembed/0000000000022", duration: "51m", streamedAt: "2026-05-11T21:30:00", views: 694 },
+      { id: "4-e4", episodeNumber: 4, title: "Cierre", okRuEmbedUrl: "https://ok.ru/videoembed/0000000000023", duration: "55m", streamedAt: "2026-05-18T21:30:00", views: 471 },
     ],
   },
   {
@@ -113,11 +115,11 @@ export const MOCK_MEDIA: MediaItem[] = [
     status: "ongoing",
     rating: 8.9,
     episodes: [
-      { id: "5-e1", episodeNumber: 1, title: "La cazadora", okRuEmbedUrl: "https://ok.ru/videoembed/0000000000030", duration: "24m", streamedAt: "2026-06-26T21:30:00" },
-      { id: "5-e2", episodeNumber: 2, title: "El noble caído", okRuEmbedUrl: "https://ok.ru/videoembed/0000000000031", duration: "24m", streamedAt: "2026-07-03T21:30:00" },
-      { id: "5-e3", episodeNumber: 3, title: "Culto de sangre", okRuEmbedUrl: "https://ok.ru/videoembed/0000000000032", duration: "23m", streamedAt: "2026-07-10T21:30:00" },
-      { id: "5-e4", episodeNumber: 4, title: "Luna llena", okRuEmbedUrl: "https://ok.ru/videoembed/0000000000033", duration: "25m", streamedAt: "2026-07-17T21:30:00" },
-      { id: "5-e5", episodeNumber: 5, title: "El precio del pacto", okRuEmbedUrl: "https://ok.ru/videoembed/0000000000034", duration: "24m", streamedAt: "2026-07-24T21:30:00" },
+      { id: "5-e1", episodeNumber: 1, title: "La cazadora", okRuEmbedUrl: "https://ok.ru/videoembed/0000000000030", duration: "24m", streamedAt: "2026-06-26T21:30:00", views: 510 },
+      { id: "5-e2", episodeNumber: 2, title: "El noble caído", okRuEmbedUrl: "https://ok.ru/videoembed/0000000000031", duration: "24m", streamedAt: "2026-07-03T21:30:00", views: 687 },
+      { id: "5-e3", episodeNumber: 3, title: "Culto de sangre", okRuEmbedUrl: "https://ok.ru/videoembed/0000000000032", duration: "23m", streamedAt: "2026-07-10T21:30:00", views: 464 },
+      { id: "5-e4", episodeNumber: 4, title: "Luna llena", okRuEmbedUrl: "https://ok.ru/videoembed/0000000000033", duration: "25m", streamedAt: "2026-07-17T21:30:00", views: 641 },
+      { id: "5-e5", episodeNumber: 5, title: "El precio del pacto", okRuEmbedUrl: "https://ok.ru/videoembed/0000000000034", duration: "24m", streamedAt: "2026-07-24T21:30:00", views: 418 },
     ],
   },
   {
@@ -135,9 +137,9 @@ export const MOCK_MEDIA: MediaItem[] = [
     status: "completed",
     rating: 7.6,
     episodes: [
-      { id: "6-e1", episodeNumber: 1, title: "Bienvenido, humano", okRuEmbedUrl: "https://ok.ru/videoembed/0000000000040", duration: "22m", streamedAt: "2026-03-28T21:30:00" },
-      { id: "6-e2", episodeNumber: 2, title: "Colmillos y modales", okRuEmbedUrl: "https://ok.ru/videoembed/0000000000041", duration: "22m", streamedAt: "2026-04-04T21:30:00" },
-      { id: "6-e3", episodeNumber: 3, title: "El festival de otoño", okRuEmbedUrl: "https://ok.ru/videoembed/0000000000042", duration: "23m", streamedAt: "2026-04-11T21:30:00" },
+      { id: "6-e1", episodeNumber: 1, title: "Bienvenido, humano", okRuEmbedUrl: "https://ok.ru/videoembed/0000000000040", duration: "22m", streamedAt: "2026-03-28T21:30:00", views: 680 },
+      { id: "6-e2", episodeNumber: 2, title: "Colmillos y modales", okRuEmbedUrl: "https://ok.ru/videoembed/0000000000041", duration: "22m", streamedAt: "2026-04-04T21:30:00", views: 457 },
+      { id: "6-e3", episodeNumber: 3, title: "El festival de otoño", okRuEmbedUrl: "https://ok.ru/videoembed/0000000000042", duration: "23m", streamedAt: "2026-04-11T21:30:00", views: 634 },
     ],
   },
   {
@@ -152,6 +154,7 @@ export const MOCK_MEDIA: MediaItem[] = [
     createdAt: "2026-07-27T20:00:00.000Z",
     okRuEmbedUrl: "https://ok.ru/videoembed/0000000000050",
     duration: "1h 10m",
+    views: 2350,
   },
   {
     id: "8",
@@ -165,6 +168,7 @@ export const MOCK_MEDIA: MediaItem[] = [
     createdAt: "2026-06-29T20:00:00.000Z",
     okRuEmbedUrl: "https://ok.ru/videoembed/0000000000051",
     duration: "48m",
+    views: 1827,
   },
   {
     id: "9",
@@ -178,6 +182,7 @@ export const MOCK_MEDIA: MediaItem[] = [
     createdAt: "2026-07-26T20:00:00.000Z",
     okRuEmbedUrl: "https://ok.ru/videoembed/0000000000060",
     duration: "2h 20m",
+    views: 1620,
   },
   {
     id: "10",
@@ -191,6 +196,7 @@ export const MOCK_MEDIA: MediaItem[] = [
     createdAt: "2026-03-08T20:00:00.000Z",
     okRuEmbedUrl: "https://ok.ru/videoembed/0000000000061",
     duration: "1h 45m",
+    views: 2597,
   },
   {
     id: "11",
@@ -204,6 +210,7 @@ export const MOCK_MEDIA: MediaItem[] = [
     createdAt: "2026-02-14T20:00:00.000Z",
     okRuEmbedUrl: "https://ok.ru/videoembed/0000000000003",
     duration: "1h 38m",
+    views: 2931,
     rating: 7.0,
   },
   {
@@ -221,8 +228,8 @@ export const MOCK_MEDIA: MediaItem[] = [
     status: "ongoing",
     rating: 8.3,
     episodes: [
-      { id: "12-e1", episodeNumber: 1, title: "Zarpando", okRuEmbedUrl: "https://ok.ru/videoembed/0000000000070", duration: "24m", streamedAt: "2026-07-03T21:30:00" },
-      { id: "12-e2", episodeNumber: 2, title: "El mapa roto", okRuEmbedUrl: "https://ok.ru/videoembed/0000000000071", duration: "24m", streamedAt: "2026-07-10T21:30:00" },
+      { id: "12-e1", episodeNumber: 1, title: "Zarpando", okRuEmbedUrl: "https://ok.ru/videoembed/0000000000070", duration: "24m", streamedAt: "2026-07-03T21:30:00", views: 790 },
+      { id: "12-e2", episodeNumber: 2, title: "El mapa roto", okRuEmbedUrl: "https://ok.ru/videoembed/0000000000071", duration: "24m", streamedAt: "2026-07-10T21:30:00", views: 567 },
     ],
   },
 ];

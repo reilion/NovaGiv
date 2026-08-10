@@ -15,6 +15,8 @@ export interface Episode {
   thumbnailUrl?: string;
   /** Wall-clock date of the stream ("YYYY-MM-DDTHH:MM:SS"), parsed from the ok.ru title. */
   streamedAt?: string;
+  /** Times this video was opened in the player. */
+  views?: number;
 }
 
 export interface Season {
@@ -62,6 +64,12 @@ export interface MediaItem {
    * keep the reference only as provenance.
    */
   okruChannelPrimary?: boolean;
+  /**
+   * Times this collection's own video was opened — movies, karaokes and
+   * especiales. Episodic collections count on their episodes instead, so use
+   * `totalViewsOf` for the number shown to the viewer.
+   */
+  views?: number;
 }
 
 /** The ok.ru origin of a collection, as edited in the admin form. */
@@ -139,6 +147,16 @@ export const SORT_OPTION_LABELS: Record<SortOption, string> = {
   streamed: "Fecha de stream (recientes)",
   "streamed-asc": "Fecha de stream (antiguos)",
 };
+
+/**
+ * Views of the whole collection: the sum of every video it holds. Derived on
+ * read rather than stored, so it can never drift from the per-video counters
+ * after an episode is moved into another collection.
+ */
+export function totalViewsOf(item: MediaItem): number {
+  const episodeViews = (item.episodes ?? []).reduce((sum, episode) => sum + (episode.views ?? 0), 0);
+  return (item.views ?? 0) + episodeViews;
+}
 
 /** Media types that open the episode/season browser instead of playing directly. */
 export function isEpisodic(type: MediaType): boolean {

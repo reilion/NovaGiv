@@ -1,12 +1,13 @@
 import Image from "next/image";
 import Link from "next/link";
-import { CalendarDays, Clock, Layers, Play } from "lucide-react";
+import { CalendarDays, Clock, Eye, Layers, Play } from "lucide-react";
 
 import { AspectRatio } from "@/components/ui/aspect-ratio";
 import { Badge } from "@/components/ui/badge";
 import { formatStreamRange } from "@/lib/stream-date";
+import { formatViews, formatViewsLabel } from "@/lib/text";
 import { buildQueryString, type SearchParamsRecord } from "@/lib/url";
-import { isEpisodic, MEDIA_STATUS_LABELS, type MediaItem } from "@/types/media";
+import { isEpisodic, MEDIA_STATUS_LABELS, totalViewsOf, type MediaItem } from "@/types/media";
 
 interface MediaCardProps {
   item: MediaItem;
@@ -25,6 +26,9 @@ export function MediaCard({ item, currentParams }: MediaCardProps) {
   const episodeCount = item.episodes?.length ?? 0;
   const href = `?${buildQueryString(currentParams, { play: item.slug })}`;
   const streamRange = formatStreamRange(item.firstStreamedAt, item.lastStreamedAt);
+  // Every video of the collection added up, so a series shows what it drew as a
+  // whole and not just what its first episode did.
+  const views = totalViewsOf(item);
 
   return (
     <Link
@@ -58,6 +62,18 @@ export function MediaCard({ item, currentParams }: MediaCardProps) {
             </Badge>
           ))}
         </div>
+
+        {/* Hidden at zero: a catalog that has just gone live would otherwise
+            show a "0" on every poster. */}
+        {views > 0 && (
+          <div
+            className="absolute bottom-2 left-2 flex items-center gap-1 rounded-md bg-black/60 px-1.5 py-0.5 text-[11px] text-foreground backdrop-blur-sm"
+            title={formatViewsLabel(views)}
+          >
+            <Eye className="size-3" />
+            {formatViews(views)}
+          </div>
+        )}
 
         <div className="absolute bottom-2 right-2 flex items-center gap-1 rounded-md bg-black/60 px-1.5 py-0.5 text-[11px] text-foreground backdrop-blur-sm">
           {episodic ? (

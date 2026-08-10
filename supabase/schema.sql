@@ -34,6 +34,10 @@ create table if not exists media_items (
   -- several collections that all keep the reference above. Exactly one of them
   -- is the primary: the one `pnpm okru:sync` appends new videos to.
   okru_channel_primary boolean not null default false,
+  -- Plays of this collection's own video (movies, karaokes, especiales). An
+  -- episodic collection keeps its count on the episode rows instead, so the
+  -- total shown on the card is always this plus the sum of its episodes'.
+  view_count int not null default 0,
   created_at timestamptz not null default now()
 );
 
@@ -45,6 +49,7 @@ alter table media_items add column if not exists okru_channel_id text;
 alter table media_items add column if not exists okru_channel_name text;
 alter table media_items add column if not exists okru_channel_url text;
 alter table media_items add column if not exists okru_channel_primary boolean not null default false;
+alter table media_items add column if not exists view_count int not null default 0;
 
 -- Runs once, when the flag is introduced: back then every linked collection was
 -- the channel's only one, so all of them are primary. Guarded so a later re-run
@@ -92,10 +97,15 @@ create table if not exists episodes (
   -- Date of the stream, parsed from the ok.ru video title. See the note on
   -- media_items above for why this is timestamp WITHOUT time zone.
   streamed_at timestamp,
+  -- Plays of this video. Carried over by ok.ru URL when the admin form rewrites
+  -- the episode list (see lib/media-write.ts), so editing a collection or moving
+  -- a video into another one never resets its count.
+  view_count int not null default 0,
   unique (media_item_id, season_number, episode_number)
 );
 
 alter table episodes add column if not exists streamed_at timestamp;
+alter table episodes add column if not exists view_count int not null default 0;
 
 create index if not exists episodes_media_item_id_idx on episodes (media_item_id);
 create index if not exists media_items_type_idx on media_items (type);
@@ -152,3 +162,35 @@ create policy "Authenticated access on okru_channels"
   to authenticated
   using (true)
   with check (true);
+
+-- Counting a play is the only write the public site makes, and the policies
+-- above only let an authenticated admin write. This function is the exception:
+-- security definer, so an anonymous visitor can bump exactly one counter by one
+-- and touch nothing else. Views of a draft are ignored, matching the read
+-- policies — a collection only starts counting once it is public.
+create or replace function register_video_view(p_media_item_id uuid, p_episode_id uuid default null)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if p_episode_id is null then
+    update media_items
+      set view_count = view_count + 1
+      where id = p_media_item_id and published;
+  else
+    update episodes
+      set view_count = view_count + 1
+      where id = p_episode_id
+        and media_item_id = p_media_item_id
+        and exists (
+          select 1 from media_items
+          where media_items.id = p_media_item_id and media_items.published
+        );
+  end if;
+end;
+$$;
+
+revoke all on function register_video_view(uuid, uuid) from public;
+grant execute on function register_video_view(uuid, uuid) to anon, authenticated;

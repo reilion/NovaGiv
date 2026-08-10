@@ -45,3 +45,12 @@ export const GENRES = [
   "Musical",
   "Suspenso",
 ] as const;
+
+/**
+ * How many ok.ru channels /admin/import syncs in one run. ok.ru serves the
+ * profile's channel grid 20 at a time and only a real browser can ask for the
+ * rest, so the panel sticks to the most recent ones — which is where new
+ * streams show up anyway. `pnpm okru:sync` is still the tool for the whole
+ * catalogue.
+ */
+export const OKRU_SYNC_CHANNEL_LIMIT = 15;

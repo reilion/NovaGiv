@@ -1,20 +1,24 @@
 "use server";
 
-import { requireAdminClient } from "@/lib/actions/require-admin";
-import {
-  fetchOkRuChannels,
-  fetchOkRuChannelVideos,
-  type OkRuChannel,
-  type OkRuVideo,
-} from "@/lib/okru-scraper";
+import { revalidatePath } from "next/cache";
 
-export interface ListChannelsResult {
-  channels?: OkRuChannel[];
+import { requireAdminClient } from "@/lib/actions/require-admin";
+import { OKRU_SYNC_CHANNEL_LIMIT } from "@/lib/constants";
+import { fetchOkRuChannels, fetchOkRuChannelVideos } from "@/lib/okru-scraper";
+import {
+  syncOkRuChannel,
+  upsertOkRuChannelCatalogue,
+  type SyncChannel,
+  type SyncOutcome,
+} from "@/lib/okru-sync";
+
+export interface SyncChannelsResult {
+  channels?: SyncChannel[];
   error?: string;
 }
 
-export interface ListVideosResult {
-  videos?: OkRuVideo[];
+export interface SyncChannelResult {
+  outcome?: SyncOutcome;
   error?: string;
 }
 
@@ -118,25 +122,57 @@ export async function listLinkableOkRuChannels(): Promise<LinkableChannelsResult
   }
 }
 
-/** Requires an admin session so this can't be used as an open scraping proxy. */
-export async function listOkRuChannels(channelsUrl: string): Promise<ListChannelsResult> {
-  await requireAdminClient();
+/**
+ * The channels the panel is going to sync: the most recent ones, as ok.ru
+ * serves them on the first page of the profile (newest first, 20 per page).
+ *
+ * Requires an admin session — this also stops the scraper from being used as an
+ * open proxy.
+ */
+export async function listOkRuSyncChannels(): Promise<SyncChannelsResult> {
+  const supabase = await requireAdminClient();
 
   try {
-    const channels = await fetchOkRuChannels(channelsUrl);
-    return { channels };
+    const channels = await fetchOkRuChannels(DEFAULT_PROFILE_URL);
+
+    // Everything the page returned goes into the catalogue behind the "link a
+    // channel" picker, even the ones beyond the limit: it costs nothing and
+    // keeps that list fresher.
+    const catalogueError = await upsertOkRuChannelCatalogue(supabase, channels);
+    if (catalogueError) console.error("okru sync: catálogo de canales —", catalogueError);
+
+    return { channels: channels.slice(0, OKRU_SYNC_CHANNEL_LIMIT) };
   } catch (error) {
-    return { error: error instanceof Error ? error.message : "No se pudo leer ok.ru." };
+    return {
+      error: error instanceof Error ? error.message : "No se pudieron leer los canales de ok.ru.",
+    };
   }
 }
 
-export async function listOkRuChannelVideos(channelUrl: string): Promise<ListVideosResult> {
-  await requireAdminClient();
+/**
+ * Syncs one channel — the same incremental write `pnpm okru:sync` does, over
+ * the videos ok.ru serves without scrolling (the newest 20 of the channel).
+ *
+ * One channel per call on purpose: the panel drives the loop, so it can show
+ * progress as it goes and no single request has to outlive a serverless
+ * function's timeout.
+ */
+export async function syncOkRuChannelNow(channel: SyncChannel): Promise<SyncChannelResult> {
+  const supabase = await requireAdminClient();
 
+  let videos;
   try {
-    const videos = await fetchOkRuChannelVideos(channelUrl);
-    return { videos };
+    videos = await fetchOkRuChannelVideos(channel.url);
   } catch (error) {
     return { error: error instanceof Error ? error.message : "No se pudo leer ok.ru." };
   }
+
+  const outcome = await syncOkRuChannel(supabase, channel, videos);
+
+  if (outcome.status === "created" || outcome.status === "updated") {
+    revalidatePath("/");
+    revalidatePath("/admin");
+  }
+
+  return { outcome };
 }

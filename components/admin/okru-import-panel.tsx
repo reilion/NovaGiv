@@ -1,209 +1,244 @@
 "use client";
 
-/* eslint-disable @next/next/no-img-element -- admin-only preview of remote ok.ru thumbnails, no next/image needed here */
+import { useState } from "react";
+import Link from "next/link";
+import {
+  Ban,
+  CircleCheck,
+  CirclePlus,
+  KeyRound,
+  Loader2,
+  RefreshCw,
+  TriangleAlert,
+} from "lucide-react";
 
-import { useState, useTransition } from "react";
-import { KeyRound, Loader2, RefreshCw } from "lucide-react";
-
-import { MediaForm } from "@/components/admin/media-form";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import {
-  listOkRuChannels,
-  listOkRuChannelVideos,
-} from "@/lib/actions/okru-import";
-import type { OkRuChannel, OkRuVideo } from "@/lib/okru-scraper";
+import { listOkRuSyncChannels, syncOkRuChannelNow } from "@/lib/actions/okru-import";
+import { OKRU_SYNC_CHANNEL_LIMIT } from "@/lib/constants";
 import { cn } from "@/lib/utils";
+import type { SyncChannel, SyncOutcome } from "@/lib/okru-sync";
 
-const DEFAULT_CHANNELS_URL = "https://ok.ru/profile/597703328549/video/channels";
+/** One row of the report: a channel and what syncing it did. */
+interface ChannelProgress {
+  channel: SyncChannel;
+  outcome?: SyncOutcome;
+  error?: string;
+}
 
+/**
+ * The same incremental import as `pnpm okru:sync`, run from the browser over
+ * the most recent channels of the profile.
+ *
+ * The loop lives here rather than in one server action so the report fills in
+ * channel by channel while it runs, and no single request has to cover all of
+ * them. What each channel does to the catalog is decided server-side by
+ * lib/okru-sync.ts — the very code the CLI uses.
+ */
 export function OkRuImportPanel({ hasSession }: { hasSession: boolean }) {
-  const [channelsUrl, setChannelsUrl] = useState(DEFAULT_CHANNELS_URL);
-  const [channels, setChannels] = useState<OkRuChannel[] | null>(null);
-  const [channelsError, setChannelsError] = useState<string | null>(null);
-  const [isLoadingChannels, startLoadingChannels] = useTransition();
+  const [isRunning, setIsRunning] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [progress, setProgress] = useState<ChannelProgress[]>([]);
+  const [total, setTotal] = useState(0);
+  const [finished, setFinished] = useState(false);
 
-  const [selectedChannel, setSelectedChannel] = useState<OkRuChannel | null>(null);
-  const [videos, setVideos] = useState<OkRuVideo[] | null>(null);
-  const [videosError, setVideosError] = useState<string | null>(null);
-  const [isLoadingVideos, startLoadingVideos] = useTransition();
+  async function handleSync() {
+    setIsRunning(true);
+    setError(null);
+    setProgress([]);
+    setTotal(0);
+    setFinished(false);
 
-  function handleLoadChannels() {
-    setChannelsError(null);
-    setChannels(null);
-    setSelectedChannel(null);
-    setVideos(null);
-    startLoadingChannels(async () => {
-      const result = await listOkRuChannels(channelsUrl);
-      if (result.error) setChannelsError(result.error);
-      else setChannels(result.channels ?? []);
-    });
+    const listed = await listOkRuSyncChannels();
+    if (listed.error || !listed.channels) {
+      setError(listed.error ?? "No se pudieron leer los canales de ok.ru.");
+      setIsRunning(false);
+      return;
+    }
+
+    setTotal(listed.channels.length);
+
+    // One at a time: ok.ru is being scraped, and each result should land on
+    // screen as soon as it's known.
+    for (const channel of listed.channels) {
+      const result = await syncOkRuChannelNow(channel);
+      setProgress((current) => [
+        ...current,
+        { channel, outcome: result.outcome, error: result.error },
+      ]);
+    }
+
+    setIsRunning(false);
+    setFinished(true);
   }
 
-  function handleSelectChannel(channel: OkRuChannel) {
-    setSelectedChannel(channel);
-    setVideos(null);
-    setVideosError(null);
-    startLoadingVideos(async () => {
-      const result = await listOkRuChannelVideos(channel.url);
-      if (result.error) setVideosError(result.error);
-      else setVideos(result.videos ?? []);
-    });
-  }
+  const summary = summarise(progress);
 
   return (
     <div className="flex flex-col gap-6">
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between gap-2">
-            <CardTitle>1. Canales de ok.ru</CardTitle>
+            <CardTitle>Sincronizar los últimos {OKRU_SYNC_CHANNEL_LIMIT} canales</CardTitle>
             <Badge variant={hasSession ? "default" : "outline"} className="gap-1">
               <KeyRound className="size-3" />
               {hasSession ? "Con tu sesión" : "Sin sesión"}
             </Badge>
           </div>
           <CardDescription>
-            Cada canal del perfil se importa como una colección aparte (serie, anime o
-            especial).{" "}
+            Recorre los {OKRU_SYNC_CHANNEL_LIMIT} canales más recientes del perfil: crea como
+            borrador los que aún no existen y a los que ya existen solo les añade los videos
+            nuevos. Nunca toca el título, el póster ni los episodios que ya editaste.{" "}
             {hasSession
-              ? "Usando tu cookie de ok.ru: también verás canales privados/solo amigos."
+              ? "Usando tu cookie de ok.ru: también ve los canales privados/solo amigos."
               : "Solo lee la página pública, así que los canales privados o solo-amigos no aparecerán (configura OKRU_COOKIE en .env.local para verlos)."}
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <div className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-            <strong className="text-foreground">Límite de esta pantalla:</strong> ok.ru
-            entrega sus listas de 20 en 20 y pide un token que solo genera su JavaScript,
-            así que aquí verás como máximo 20 canales y 20 videos por canal. Para importar
-            el catálogo completo ejecuta <code>pnpm okru:sync</code> en tu PC: recorre todos
-            los canales y sus videos y los deja como borradores en este panel.
+            <strong className="text-foreground">Alcance de esta pantalla:</strong> ok.ru entrega
+            sus listas de 20 en 20 y pedir el resto necesita un token que solo genera su
+            JavaScript. Por eso aquí se sincronizan los {OKRU_SYNC_CHANNEL_LIMIT} canales que
+            salen sin hacer scroll y, de cada uno, sus 20 videos más recientes. Para el catálogo
+            completo (todos los canales y todos sus videos) ejecuta <code>pnpm okru:sync</code>{" "}
+            en tu PC.
           </div>
 
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <Input
-              value={channelsUrl}
-              onChange={(event) => setChannelsUrl(event.target.value)}
-              placeholder="https://ok.ru/profile/.../video/channels"
-              className="flex-1"
-            />
-            <Button type="button" onClick={handleLoadChannels} disabled={isLoadingChannels}>
-              {isLoadingChannels ? (
+          <div>
+            <Button type="button" onClick={handleSync} disabled={isRunning}>
+              {isRunning ? (
                 <Loader2 className="size-4 animate-spin" />
               ) : (
                 <RefreshCw className="size-4" />
               )}
-              Buscar canales
+              {isRunning ? "Sincronizando…" : "Sincronizar ahora"}
             </Button>
           </div>
 
-          {channelsError && <p className="text-sm text-destructive">{channelsError}</p>}
+          {error && <p className="text-sm text-destructive">{error}</p>}
 
-          {channels && channels.length === 0 && !channelsError && (
-            <p className="text-sm text-muted-foreground">No se encontraron canales.</p>
+          {isRunning && (
+            <p className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="size-4 animate-spin" />
+              {total === 0
+                ? "Leyendo los canales del perfil…"
+                : `Canal ${Math.min(progress.length + 1, total)} de ${total}…`}
+            </p>
           )}
 
-          {channels && channels.length > 0 && (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {channels.map((channel) => (
-                <button
-                  key={channel.id}
-                  type="button"
-                  onClick={() => handleSelectChannel(channel)}
-                  className={cn(
-                    "flex flex-col gap-2 rounded-lg border p-3 text-left transition-colors hover:border-primary",
-                    selectedChannel?.id === channel.id
-                      ? "border-primary bg-primary/10"
-                      : "border-border"
-                  )}
-                >
-                  {channel.thumbnailUrl ? (
-                    <img
-                      src={channel.thumbnailUrl}
-                      alt=""
-                      className="aspect-video w-full rounded-md object-cover"
-                    />
-                  ) : (
-                    <div className="aspect-video w-full rounded-md bg-muted" />
-                  )}
-                  <span className="font-medium text-foreground">{channel.name}</span>
-                  {typeof channel.videoCount === "number" && (
-                    <span className="text-xs text-muted-foreground">
-                      {channel.videoCount} video{channel.videoCount === 1 ? "" : "s"}
-                    </span>
-                  )}
-                </button>
+          {finished && progress.length > 0 && (
+            <p className="text-sm text-foreground">
+              Listo. Creadas: {summary.created} · Con videos nuevos: {summary.updated} · Sin
+              cambios: {summary.unchanged} · Omitidas: {summary.skipped}
+              {summary.created + summary.updated > 0 && (
+                <span className="text-muted-foreground">
+                  {" "}
+                  — las nuevas quedan como borrador hasta que las publiques.
+                </span>
+              )}
+            </p>
+          )}
+
+          {progress.length > 0 && (
+            <ul className="flex flex-col gap-1.5">
+              {progress.map((row) => (
+                <ProgressRow key={row.channel.id} row={row} />
               ))}
-            </div>
+            </ul>
           )}
         </CardContent>
       </Card>
-
-      {selectedChannel && (
-        <Card>
-          <CardHeader>
-            <CardTitle>2. Videos de &ldquo;{selectedChannel.name}&rdquo;</CardTitle>
-            <CardDescription>
-              Se cargan como episodios (orden cronológico) en el formulario de abajo.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-2">
-            {isLoadingVideos && (
-              <p className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="size-4 animate-spin" /> Cargando videos…
-              </p>
-            )}
-            {videosError && <p className="text-sm text-destructive">{videosError}</p>}
-            {videos && videos.length === 0 && !videosError && (
-              <p className="text-sm text-muted-foreground">Este canal no tiene videos.</p>
-            )}
-            {videos && videos.length > 0 && (
-              <p className="text-sm text-muted-foreground">
-                {videos.length} video{videos.length === 1 ? "" : "s"} encontrados. Completa lo
-                que falte abajo — el título se guarda como borrador hasta que lo publiques.
-              </p>
-            )}
-            {videos &&
-              typeof selectedChannel.videoCount === "number" &&
-              videos.length < selectedChannel.videoCount && (
-                <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                  Este canal tiene {selectedChannel.videoCount} videos en ok.ru pero aquí solo
-                  se pudieron leer {videos.length}. Usa <code>pnpm okru:sync</code> para traerlo
-                  completo.
-                </p>
-              )}
-          </CardContent>
-        </Card>
-      )}
-
-      {videos && videos.length > 0 && (
-        <MediaForm
-          key={selectedChannel?.id}
-          initialValues={{
-            title: selectedChannel?.name,
-            type: "series",
-            posterUrl: videos[0]?.thumbnailUrl,
-            published: false,
-            // Linked from the start so a later rename here doesn't make
-            // `pnpm okru:sync` import the same channel a second time.
-            okruChannel: selectedChannel
-              ? {
-                  id: selectedChannel.id,
-                  name: selectedChannel.name,
-                  url: selectedChannel.url,
-                }
-              : undefined,
-            episodes: videos.map((video, index) => ({
-              episodeNumber: index + 1,
-              title: video.title,
-              okRuEmbedUrl: video.embedUrl,
-              duration: video.duration,
-              streamedAt: video.streamedAt,
-            })),
-          }}
-        />
-      )}
     </div>
   );
+}
+
+function ProgressRow({ row }: { row: ChannelProgress }) {
+  const { icon, text, tone, mediaItemId } = describe(row);
+
+  return (
+    <li className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm">
+      <span className={cn("shrink-0", tone)}>{icon}</span>
+      <span className="min-w-0 flex-1 truncate">
+        <span className="font-medium text-foreground">{row.channel.name}</span>{" "}
+        <span className="text-muted-foreground">{text}</span>
+      </span>
+      {mediaItemId && (
+        <Link
+          href={`/admin/media/${mediaItemId}`}
+          className="shrink-0 text-xs text-primary underline-offset-4 hover:underline"
+        >
+          Editar
+        </Link>
+      )}
+    </li>
+  );
+}
+
+/** The line the CLI would print, as an icon + a sentence. */
+function describe(row: ChannelProgress): {
+  icon: React.ReactNode;
+  text: string;
+  tone: string;
+  mediaItemId?: string;
+} {
+  if (row.error || !row.outcome) {
+    return {
+      icon: <TriangleAlert className="size-4" />,
+      text: row.error ?? "No se pudo sincronizar.",
+      tone: "text-destructive",
+    };
+  }
+
+  const outcome = row.outcome;
+  switch (outcome.status) {
+    case "created":
+      return {
+        icon: <CirclePlus className="size-4" />,
+        text: `colección nueva · ${outcome.added} episodio${outcome.added === 1 ? "" : "s"} · borrador`,
+        tone: "text-primary",
+        mediaItemId: outcome.mediaItemId,
+      };
+    case "updated":
+      return {
+        icon: <CirclePlus className="size-4" />,
+        text:
+          `+${outcome.added} episodio${outcome.added === 1 ? "" : "s"} (total ${outcome.total})` +
+          (outcome.published ? "" : " · sigue en borrador"),
+        tone: "text-primary",
+        mediaItemId: outcome.mediaItemId,
+      };
+    case "unchanged":
+      return {
+        icon: <CircleCheck className="size-4" />,
+        text: `sin videos nuevos (${outcome.total} episodios)${
+          outcome.collections > 1 ? ` · ${outcome.collections} colecciones del canal` : ""
+        }`,
+        tone: "text-muted-foreground",
+        mediaItemId: outcome.mediaItemId,
+      };
+    case "skipped":
+      return {
+        icon: <Ban className="size-4" />,
+        text: `${outcome.reason}, se omite`,
+        tone: "text-muted-foreground",
+      };
+    case "error":
+      return {
+        icon: <TriangleAlert className="size-4" />,
+        text: outcome.message,
+        tone: "text-destructive",
+      };
+  }
+}
+
+function summarise(progress: ChannelProgress[]) {
+  const summary = { created: 0, updated: 0, unchanged: 0, skipped: 0 };
+
+  for (const row of progress) {
+    if (!row.outcome || row.error || row.outcome.status === "error") summary.skipped += 1;
+    else summary[row.outcome.status] += 1;
+  }
+
+  return summary;
 }

@@ -23,3 +23,18 @@ export function buildQueryString(
 
   return params.toString();
 }
+
+/**
+ * Identity of the *filter* state of a URL, used to key the catalog's Suspense
+ * boundary. `play` is deliberately left out: which video is open changes the
+ * modal, not the grid, so keying on it would tear the whole catalog down and
+ * rebuild it from the skeleton on every open and close. Sorted so two URLs
+ * carrying the same filters in a different order share one key.
+ */
+export function filterStateKey(current: SearchParamsRecord): string {
+  return Object.entries(current)
+    .filter(([key, value]) => key !== "play" && value !== undefined)
+    .map(([key, value]) => `${key}=${Array.isArray(value) ? value.join(",") : value}`)
+    .sort()
+    .join("&");
+}

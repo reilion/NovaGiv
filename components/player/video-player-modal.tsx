@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { CalendarDays, Eye, Monitor, PlayCircle } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -109,13 +109,27 @@ interface VideoPlayerModalProps {
 }
 
 export function VideoPlayerModal({ item, closeHref }: VideoPlayerModalProps) {
-  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // The URL still says what is open, but it is read here on the client so that
+  // closing the player only has to rewrite the address bar. Navigating instead
+  // (`router.push`) would re-run the server render of the whole page and
+  // re-query the catalog just to hide a dialog the browser already has.
+  const open = item !== null && searchParams.get("play") === item.slug;
 
   return (
     <Dialog
-      open={item !== null}
-      onOpenChange={(open) => {
-        if (!open) router.push(closeHref || "?", { scroll: false });
+      open={open}
+      onOpenChange={(next) => {
+        if (next) return;
+        // `replaceState` keeps the entry the card's link pushed, so closing
+        // doesn't stack an extra step in the browser history. Next.js patches
+        // it to keep `useSearchParams` in sync without touching the server.
+        window.history.replaceState(
+          null,
+          "",
+          closeHref === "?" ? window.location.pathname : closeHref
+        );
       }}
     >
       {/* Keyed by item id so the episode selection resets on its own when a

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
-import { requireAdminClient } from "@/lib/actions/require-admin";
+import { requireAdminClient } from "@/lib/auth";
 import { OKRU_SYNC_CHANNEL_LIMIT } from "@/lib/constants";
 import { fetchOkRuChannels, fetchOkRuChannelVideos } from "@/lib/okru-scraper";
 import {

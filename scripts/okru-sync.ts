@@ -115,7 +115,7 @@ async function createWritableClient() {
       "  1) SUPABASE_SERVICE_ROLE_KEY=...  (Dashboard -> Settings -> API -> service_role)\n" +
       "  2) SUPABASE_ADMIN_EMAIL=... y SUPABASE_ADMIN_PASSWORD=...  (tu cuenta de /admin)\n" +
       "La anon key por sí sola no puede escribir: las políticas RLS solo permiten\n" +
-      "escritura al rol 'authenticated'."
+      "escritura a una cuenta con role = 'admin' en la tabla profiles."
   );
   process.exit(1);
 }

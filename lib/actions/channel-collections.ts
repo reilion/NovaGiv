@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { requireAdminClient } from "@/lib/actions/require-admin";
+import { requireAdminClient } from "@/lib/auth";
 import { carryEpisodeViewsToItem, writeMediaItem } from "@/lib/media-write";
 import { toOkRuEmbedUrl } from "@/lib/okru";
 import { slugify } from "@/lib/text";

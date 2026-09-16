@@ -4,7 +4,8 @@ import { LogOut } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { signOut } from "@/lib/actions/auth";
-import { createClient } from "@/lib/supabase/server";
+import { getAccount } from "@/lib/auth";
+import { loginPath } from "@/lib/url";
 
 export const metadata = {
   title: "Panel de administración | NovaGiv",
@@ -15,14 +16,12 @@ export default async function AdminDashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const account = await getAccount();
 
-  // Middleware already redirects unauthenticated requests; this is a cheap
-  // defense-in-depth check plus it gives us the email to show in the header.
-  if (!user) redirect("/admin/login");
+  // Middleware already turns away everyone who is not an admin; this is a cheap
+  // defense-in-depth check plus it gives us the name to show in the header.
+  if (!account) redirect(loginPath("/admin"));
+  if (account.role !== "admin") redirect("/");
 
   return (
     <div className="min-h-screen bg-background">
@@ -32,7 +31,9 @@ export default async function AdminDashboardLayout({
             NovaGiv <span className="text-muted-foreground">· Admin</span>
           </Link>
           <div className="flex items-center gap-3">
-            <span className="hidden text-sm text-muted-foreground sm:inline">{user.email}</span>
+            <span className="hidden text-sm text-muted-foreground sm:inline">
+              {account.username}
+            </span>
             <form action={signOut}>
               <Button type="submit" variant="outline" size="sm">
                 <LogOut className="size-4" />

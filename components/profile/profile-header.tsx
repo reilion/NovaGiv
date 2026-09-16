@@ -1,8 +1,9 @@
-import type { ComponentType } from "react";
+import { Suspense, type ComponentType } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { Globe, MessageCircle, PlayCircle, Tv, X } from "lucide-react";
 
+import { AccountMenu, AccountMenuSkeleton } from "@/components/auth/account-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -102,27 +103,33 @@ export function ProfileHeader({ profile }: { profile: StreamerProfile }) {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          {profile.socials.map((social) => {
-            const meta = SOCIAL_META[social.platform];
-            const Icon = meta.icon;
-            return (
-              <Link
-                key={social.platform}
-                href={social.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label={meta.label}
-                title={meta.label}
-                className={cn(
-                  "flex size-9 items-center justify-center rounded-full transition-colors",
-                  meta.className
-                )}
-              >
-                <Icon className="size-4" />
-              </Link>
-            );
-          })}
+        <div className="flex flex-col items-start gap-3 sm:items-end">
+          <Suspense fallback={<AccountMenuSkeleton />}>
+            <AccountMenu />
+          </Suspense>
+
+          <div className="flex items-center gap-2">
+            {profile.socials.map((social) => {
+              const meta = SOCIAL_META[social.platform];
+              const Icon = meta.icon;
+              return (
+                <Link
+                  key={social.platform}
+                  href={social.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={meta.label}
+                  title={meta.label}
+                  className={cn(
+                    "flex size-9 items-center justify-center rounded-full transition-colors",
+                    meta.className
+                  )}
+                >
+                  <Icon className="size-4" />
+                </Link>
+              );
+            })}
+          </div>
         </div>
       </div>
     </header>

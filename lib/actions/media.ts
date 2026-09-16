@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { requireAdminClient } from "@/lib/actions/require-admin";
+import { requireAdminClient } from "@/lib/auth";
 import { viewCountsByEmbedUrl, writeMediaItem } from "@/lib/media-write";
 import { MOCK_MEDIA } from "@/lib/mock-data";
 import type { MediaFormInput } from "@/types/media";

@@ -113,9 +113,175 @@ create index if not exists media_items_created_at_idx on media_items (created_at
 create index if not exists media_items_published_idx on media_items (published);
 create index if not exists media_items_last_streamed_at_idx on media_items (last_streamed_at desc);
 
+-- ---------------------------------------------------------------------------
+-- Accounts
+-- ---------------------------------------------------------------------------
+-- Visitors sign up with a username, an email and a password, and from then on
+-- log in with the username only (app/login). Supabase Auth has no notion of a
+-- username, so this table is the missing half of an account: auth.users keeps
+-- the email and the password, profiles keeps the username and the role, and the
+-- triggers below keep the two in sync. The email is stored in both because
+-- signing in by username means resolving it back to an email server-side, and
+-- that lookup should not need a second round trip into the auth schema.
+
+create table if not exists profiles (
+  id uuid primary key references auth.users (id) on delete cascade,
+  -- Always stored lowercase — together with the unique index below, that is
+  -- what makes "Kevin" and "kevin" the same account.
+  username text not null check (username = lower(username) and username ~ '^[a-z0-9_]{3,20}$'),
+  email text not null,
+  -- 'user' is everything the sign-up form can produce: the catalog is public,
+  -- so for now the role only decides who gets into /admin. Promote by hand:
+  --   update profiles set role = 'admin' where username = '...';
+  role text not null default 'user' check (role in ('user', 'admin')),
+  created_at timestamptz not null default now()
+);
+
+create unique index if not exists profiles_username_key on profiles (lower(username));
+create index if not exists profiles_role_idx on profiles (role);
+
+-- One profile per auth user, created in the same transaction as the auth row:
+-- a username already taken makes the unique index abort the whole sign-up
+-- instead of leaving an account with no profile behind.
+create or replace function public.handle_new_auth_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_username text;
+begin
+  v_username := regexp_replace(
+    lower(trim(coalesce(new.raw_user_meta_data ->> 'username', ''))), '[^a-z0-9_]', '', 'g'
+  );
+
+  -- No username in the metadata means the account was created outside the
+  -- sign-up form (Supabase dashboard, an invite): derive one from the email and
+  -- suffix it so two such accounts cannot collide.
+  if length(v_username) < 3 then
+    v_username := regexp_replace(lower(split_part(new.email, '@', 1)), '[^a-z0-9_]', '', 'g');
+    if length(v_username) < 3 then
+      v_username := 'user';
+    end if;
+    v_username := left(v_username, 14) || '_' || left(replace(new.id::text, '-', ''), 5);
+  end if;
+
+  -- The role is hard-coded, never read from the metadata: the sign-up payload
+  -- is attacker-controlled, and this is the only path that creates accounts.
+  insert into public.profiles (id, username, email, role)
+  values (new.id, left(v_username, 20), new.email, 'user');
+
+  return new;
+end;
+$$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute function public.handle_new_auth_user();
+
+-- Keeps the email copy above honest when an account changes its email.
+create or replace function public.sync_profile_email()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update public.profiles set email = new.email where id = new.id;
+  return new;
+end;
+$$;
+
+drop trigger if exists on_auth_user_email_changed on auth.users;
+create trigger on_auth_user_email_changed
+  after update of email on auth.users
+  for each row
+  when (new.email is distinct from old.email)
+  execute function public.sync_profile_email();
+
+-- Runs once, when this table is introduced: back then the only accounts that
+-- existed were the admin's (see README), so they all become admins, each with a
+-- username taken from its email — `kevin@novagiv.com` logs in as `kevin` from
+-- now on. Guarded on the table being empty, so a later re-run can never promote
+-- a visitor who has signed up since.
+--
+-- Run this afterwards to see the usernames it handed out:
+--   select username, email, role from profiles;
+insert into profiles (id, username, email, role)
+select
+  seed.id,
+  -- Only fall back to a suffixed name when the plain one is unusable: too
+  -- short or too long for the check constraint, or claimed by another account.
+  case
+    when length(seed.base) between 3 and 20
+      and count(*) over (partition by seed.base) = 1
+    then seed.base
+    else left(seed.base, 14) || '_' || left(replace(seed.id::text, '-', ''), 5)
+  end,
+  seed.email,
+  'admin'
+from (
+  select
+    u.id,
+    u.email,
+    coalesce(
+      nullif(regexp_replace(lower(split_part(u.email, '@', 1)), '[^a-z0-9_]', '', 'g'), ''),
+      'admin'
+    ) as base
+  from auth.users u
+  where u.email is not null
+    and not exists (select 1 from profiles)
+) seed
+on conflict do nothing;
+
+-- Single source of truth for "is the caller an admin?", used by every policy
+-- below and by the /admin gate. security definer so that reading profiles from
+-- inside a profiles policy cannot recurse.
+create or replace function public.is_admin()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.profiles
+    where id = auth.uid() and role = 'admin'
+  );
+$$;
+
+alter table profiles enable row level security;
 alter table media_items enable row level security;
 alter table episodes enable row level security;
 alter table okru_channels enable row level security;
+
+-- An account can read itself and nothing more: other people's usernames and
+-- emails never reach the browser. The sign-in lookup (username -> email) runs
+-- server-side with the service-role key instead — see lib/supabase/admin.ts.
+drop policy if exists "Users read own profile" on profiles;
+create policy "Users read own profile"
+  on profiles for select
+  to authenticated
+  using (id = auth.uid() or public.is_admin());
+
+-- Renaming yourself from /account is the one write a session may make here.
+drop policy if exists "Users update own profile" on profiles;
+create policy "Users update own profile"
+  on profiles for update
+  to authenticated
+  using (id = auth.uid())
+  with check (id = auth.uid());
+
+-- ...and the column grant is what keeps that policy honest. A `with check`
+-- expression cannot see *which* columns an update touched, so on its own the
+-- policy above would happily accept `set role = 'admin'`. Postgres can: only
+-- username is writable by a session, which leaves the role reachable by hand in
+-- the SQL editor alone. email is off the list too — it is a copy of the auth
+-- record, and only the trigger above may move it.
+revoke update on profiles from anon, authenticated;
+grant update (username) on profiles to authenticated;
 
 -- Public catalog: only published rows are visible without a session.
 -- Drafts (published = false) — e.g. ok.ru imports awaiting review — stay
@@ -136,32 +302,34 @@ create policy "Public read access on episodes"
     )
   );
 
--- Admin panel (app/admin): any authenticated Supabase user can manage the
--- catalog, drafts included. There is only ever one admin account (see
--- README), so a broad "authenticated" policy is enough — no per-row
--- ownership to check.
+-- Admin panel (app/admin): managing the catalog, drafts included, is limited to
+-- profiles with role = 'admin'. Being logged in is no longer enough — now that
+-- visitors can sign up, "authenticated" means any of them.
 drop policy if exists "Authenticated write access on media_items" on media_items;
-create policy "Authenticated write access on media_items"
+drop policy if exists "Admin write access on media_items" on media_items;
+create policy "Admin write access on media_items"
   on media_items for all
   to authenticated
-  using (true)
-  with check (true);
+  using (public.is_admin())
+  with check (public.is_admin());
 
 drop policy if exists "Authenticated write access on episodes" on episodes;
-create policy "Authenticated write access on episodes"
+drop policy if exists "Admin write access on episodes" on episodes;
+create policy "Admin write access on episodes"
   on episodes for all
   to authenticated
-  using (true)
-  with check (true);
+  using (public.is_admin())
+  with check (public.is_admin());
 
 -- Admin-only: the channel catalogue is a tool for the import panel, nothing on
 -- the public site reads it.
 drop policy if exists "Authenticated access on okru_channels" on okru_channels;
-create policy "Authenticated access on okru_channels"
+drop policy if exists "Admin access on okru_channels" on okru_channels;
+create policy "Admin access on okru_channels"
   on okru_channels for all
   to authenticated
-  using (true)
-  with check (true);
+  using (public.is_admin())
+  with check (public.is_admin());
 
 -- Counting a play is the only write the public site makes, and the policies
 -- above only let an authenticated admin write. This function is the exception:

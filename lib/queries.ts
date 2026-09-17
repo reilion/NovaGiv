@@ -1,6 +1,7 @@
 import "server-only";
 
 import { cache } from "react";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
 import { createClient } from "@/lib/supabase/server";
 import { MOCK_MEDIA, MOCK_STREAMER } from "@/lib/mock-data";
@@ -145,8 +146,16 @@ export async function getAllMediaItemsForAdmin(): Promise<MediaItem[]> {
   return (data as MediaItemRow[]).map(mapMediaItem);
 }
 
-/** Single published item by slug, used by the video player modal / detail route. */
-export async function getMediaBySlug(slug: string): Promise<MediaItem | null> {
+/**
+ * Single published item by slug — what /v/[slug] and the modal that intercepts
+ * it render.
+ *
+ * Request-cached because one view of a title asks for it up to three times:
+ * `generateMetadata`, the page itself, and the OG image route.
+ */
+export const getMediaBySlug = cache(async function getMediaBySlug(
+  slug: string
+): Promise<MediaItem | null> {
   if (!isSupabaseConfigured) {
     return MOCK_MEDIA.find((item) => item.slug === slug && item.published !== false) ?? null;
   }
@@ -165,6 +174,50 @@ export async function getMediaBySlug(slug: string): Promise<MediaItem | null> {
   }
 
   return mapMediaItem(data as MediaItemRow);
+});
+
+export interface SitemapEntry {
+  slug: string;
+  /** Newest of the stream date and the row's creation, as an ISO string. */
+  lastModified: string;
+}
+
+/**
+ * Slugs for app/sitemap.ts.
+ *
+ * Deliberately not `getMediaItems()`: that one reads the request's cookies, and
+ * a sitemap is produced without a request. This goes through a session-less
+ * client instead — the anon key sees exactly what an anonymous visitor sees, so
+ * RLS keeps drafts out of the sitemap on its own.
+ */
+export async function getSitemapEntries(): Promise<SitemapEntry[]> {
+  if (!isSupabaseConfigured) {
+    return MOCK_MEDIA.filter((item) => item.published !== false).map((item) => ({
+      slug: item.slug,
+      lastModified: item.lastStreamedAt ?? item.createdAt,
+    }));
+  }
+
+  const supabase = createSupabaseClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { auth: { persistSession: false, autoRefreshToken: false } }
+  );
+
+  const { data, error } = await supabase
+    .from("media_items")
+    .select("slug, last_streamed_at, created_at")
+    .eq("published", true);
+
+  if (error || !data) {
+    console.error("getSitemapEntries error —", error?.message);
+    return [];
+  }
+
+  return data.map((row) => ({
+    slug: row.slug as string,
+    lastModified: (row.last_streamed_at as string | null) ?? (row.created_at as string),
+  }));
 }
 
 /** Single item by primary key, used by the admin edit form. */

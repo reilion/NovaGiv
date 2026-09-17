@@ -2,37 +2,29 @@ import { SearchX } from "lucide-react";
 
 import { MediaCard } from "@/components/media/media-card";
 import type { YearGroup } from "@/lib/media-filter";
-import type { SearchParamsRecord } from "@/lib/url";
 import type { MediaItem } from "@/types/media";
 
 interface MediaGridProps {
   items: MediaItem[];
-  currentParams: SearchParamsRecord;
 }
 
 const GRID_CLASS =
   "grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6";
 
-export function MediaGrid({ items, currentParams }: MediaGridProps) {
+export function MediaGrid({ items }: MediaGridProps) {
   if (items.length === 0) return <EmptyState />;
 
   return (
     <div className={`${GRID_CLASS} py-6`}>
       {items.map((item) => (
-        <MediaCard key={item.id} item={item} currentParams={currentParams} />
+        <MediaCard key={item.id} item={item} />
       ))}
     </div>
   );
 }
 
 /** Default view: one section per stream year, with undated items last. */
-export function MediaGridByYear({
-  groups,
-  currentParams,
-}: {
-  groups: YearGroup[];
-  currentParams: SearchParamsRecord;
-}) {
+export function MediaGridByYear({ groups }: { groups: YearGroup[] }) {
   if (groups.length === 0) return <EmptyState />;
 
   return (
@@ -50,7 +42,7 @@ export function MediaGridByYear({
           </div>
           <div className={GRID_CLASS}>
             {group.items.map((item) => (
-              <MediaCard key={item.id} item={item} currentParams={currentParams} />
+              <MediaCard key={item.id} item={item} />
             ))}
           </div>
         </section>

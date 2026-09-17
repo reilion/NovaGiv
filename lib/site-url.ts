@@ -24,3 +24,23 @@ export async function getSiteUrl(): Promise<string> {
 
   return `${protocol}://${host}`;
 }
+
+/**
+ * Canonical origin, resolved without a request — what `metadataBase`, the
+ * sitemap and robots.txt need, since all three can be produced at build time
+ * where there are no headers to read.
+ *
+ * A shared link has to carry the *canonical* host anyway: derived from the
+ * request, the same title would advertise itself under whatever preview domain
+ * happened to serve it. Set SITE_URL in production; on Vercel the project's
+ * production domain is the next best guess.
+ */
+export function getPublicSiteUrl(): string {
+  const configured = process.env.SITE_URL;
+  if (configured) return configured.replace(/\/+$/, "");
+
+  const vercelDomain = process.env.VERCEL_PROJECT_PRODUCTION_URL;
+  if (vercelDomain) return `https://${vercelDomain.replace(/\/+$/, "")}`;
+
+  return "http://localhost:3000";
+}

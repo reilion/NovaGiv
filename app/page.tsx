@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { redirect } from "next/navigation";
 
 import { FilterBarContainer } from "@/components/filters/filter-bar-container";
 import { FilterBarSkeleton } from "@/components/filters/filter-bar-skeleton";
@@ -18,11 +19,16 @@ export default async function HomePage({ searchParams }: HomePageProps) {
     searchParams,
   ]);
 
+  // Titles used to open as `?play=<slug>` on this page. Links to that are out
+  // in the world, so they are forwarded to the page the title now has of its
+  // own instead of quietly doing nothing.
+  const legacyPlaySlug = resolvedSearchParams.play;
+  if (typeof legacyPlaySlug === "string" && legacyPlaySlug) {
+    redirect(`/v/${encodeURIComponent(legacyPlaySlug)}`);
+  }
+
   // Re-key the Suspense boundary whenever the filters change so the skeleton
   // reappears while the (server-rendered) grid streams in with new data.
-  // Opening a video is not a filter change, so `play` is excluded: keying on
-  // it made every click on a card unmount the catalog and flash the skeleton,
-  // which read as a full page reload.
   const suspenseKey = filterStateKey(resolvedSearchParams);
 
   return (

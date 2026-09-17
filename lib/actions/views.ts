@@ -7,7 +7,7 @@ import { isSupabaseConfigured } from "@/lib/queries";
  * Counts one play. Called by the player when a video is shown — ok.ru's iframe
  * never tells us whether it was actually watched, so "opened in the player" is
  * what a view means here. The client only fires it once per video per session
- * (see components/player/video-player-modal.tsx), so re-opening the same
+ * (see components/player/media-player.tsx), so re-opening the same
  * episode while browsing doesn't inflate the count.
  *
  * Goes through the `register_video_view` function instead of an update: the

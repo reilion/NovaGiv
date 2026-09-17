@@ -42,8 +42,6 @@ export function FilterBar({ streamYears = [] }: { streamYears?: number[] }) {
         if (!value || value === "all") params.delete(key);
         else params.set(key, value);
       });
-      // Any filter change closes whatever video is currently open.
-      params.delete("play");
 
       startTransition(() => {
         const query = params.toString();

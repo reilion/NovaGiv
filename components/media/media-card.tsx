@@ -6,7 +6,6 @@ import { AspectRatio } from "@/components/ui/aspect-ratio";
 import { Badge } from "@/components/ui/badge";
 import { formatStreamRange } from "@/lib/stream-date";
 import { formatLikesLabel, formatViews, formatViewsLabel } from "@/lib/text";
-import { buildQueryString, type SearchParamsRecord } from "@/lib/url";
 import {
   isEpisodic,
   MEDIA_STATUS_LABELS,
@@ -17,20 +16,21 @@ import {
 
 interface MediaCardProps {
   item: MediaItem;
-  currentParams: SearchParamsRecord;
 }
 
 /**
  * Single card used for every media type. Movies/specials/karaokes show a
  * duration badge and open the player directly; series/anime show an episode
- * count + status and open the same modal with the episode/season sidebar.
- * Clicking sets `?play=<slug>` in the URL — the server re-renders the page
- * with the modal already open, so no client state is needed here.
+ * count + status and open the same player with its episode list.
+ *
+ * A plain link to the title's own page: from here that page is intercepted and
+ * drawn as a dialog over the catalog (app/@modal), so the URL is shareable
+ * while the catalog underneath keeps its filters and scroll position.
  */
-export function MediaCard({ item, currentParams }: MediaCardProps) {
+export function MediaCard({ item }: MediaCardProps) {
   const episodic = isEpisodic(item.type);
   const episodeCount = item.episodes?.length ?? 0;
-  const href = `?${buildQueryString(currentParams, { play: item.slug })}`;
+  const href = `/v/${item.slug}`;
   const streamRange = formatStreamRange(item.firstStreamedAt, item.lastStreamedAt);
   // Every video of the collection added up, so a series shows what it drew as a
   // whole and not just what its first episode did.

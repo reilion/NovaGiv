@@ -362,3 +362,183 @@ $$;
 
 revoke all on function register_video_view(uuid, uuid) from public;
 grant execute on function register_video_view(uuid, uuid) to anon, authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Likes
+-- ---------------------------------------------------------------------------
+-- One row per person per video, which is what makes a like undoable and stops
+-- the same account from counting twice. Keyed exactly like a view is: an
+-- episode when the collection is episodic, the collection itself for a movie,
+-- karaoke or especial.
+
+create table if not exists video_likes (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  media_item_id uuid not null references media_items (id) on delete cascade,
+  episode_id uuid references episodes (id) on delete cascade,
+  created_at timestamptz not null default now()
+);
+
+-- "One like per person per video" in two halves, because a plain unique
+-- constraint would let a movie be liked twice: null episode_id values do not
+-- compare equal to each other.
+create unique index if not exists video_likes_episode_key
+  on video_likes (user_id, episode_id)
+  where episode_id is not null;
+
+create unique index if not exists video_likes_item_key
+  on video_likes (user_id, media_item_id)
+  where episode_id is null;
+
+create index if not exists video_likes_media_item_id_idx on video_likes (media_item_id);
+
+-- Denormalized totals, kept beside view_count and maintained by the trigger
+-- below. The catalog grid reads one row per collection; counting likes per
+-- video on every render would mean an aggregate join for a number that changes
+-- a handful of times a day.
+alter table media_items add column if not exists like_count int not null default 0;
+alter table episodes add column if not exists like_count int not null default 0;
+
+create or replace function public.sync_video_like_count()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if tg_op = 'INSERT' then
+    if new.episode_id is null then
+      update media_items set like_count = like_count + 1 where id = new.media_item_id;
+    else
+      update episodes set like_count = like_count + 1 where id = new.episode_id;
+    end if;
+  else
+    -- greatest() so a counter that somehow drifted can never go negative.
+    if old.episode_id is null then
+      update media_items set like_count = greatest(like_count - 1, 0) where id = old.media_item_id;
+    else
+      update episodes set like_count = greatest(like_count - 1, 0) where id = old.episode_id;
+    end if;
+  end if;
+
+  return null;
+end;
+$$;
+
+drop trigger if exists on_video_like_changed on video_likes;
+create trigger on_video_like_changed
+  after insert or delete on video_likes
+  for each row execute function public.sync_video_like_count();
+
+-- Re-derives both counters from the likes themselves, so re-running this file
+-- repairs a drift instead of leaving it to be found by hand. A no-op when the
+-- numbers already agree — the `is distinct from` is what keeps it from
+-- rewriting every row on every run.
+update media_items m
+set like_count = coalesce(c.total, 0)
+from media_items base
+left join (
+  select media_item_id, count(*) as total
+  from video_likes
+  where episode_id is null
+  group by media_item_id
+) c on c.media_item_id = base.id
+where m.id = base.id and m.like_count is distinct from coalesce(c.total, 0);
+
+update episodes e
+set like_count = coalesce(c.total, 0)
+from episodes base
+left join (
+  select episode_id, count(*) as total
+  from video_likes
+  where episode_id is not null
+  group by episode_id
+) c on c.episode_id = base.id
+where e.id = base.id and e.like_count is distinct from coalesce(c.total, 0);
+
+alter table video_likes enable row level security;
+
+-- Your own likes are all you may read: the totals everyone sees live on the
+-- catalog rows, so nobody ever needs to look at who liked what.
+drop policy if exists "Users read own likes" on video_likes;
+create policy "Users read own likes"
+  on video_likes for select
+  to authenticated
+  using (user_id = auth.uid());
+
+-- Liking is for signed-in visitors only — an anonymous like could not be
+-- undone, and would be counted again on the next browser. The row has to point
+-- at a published video, and at an episode that really belongs to the
+-- collection, so the counter can never be moved by a hand-made request.
+drop policy if exists "Users like published videos" on video_likes;
+create policy "Users like published videos"
+  on video_likes for insert
+  to authenticated
+  with check (
+    user_id = auth.uid()
+    and exists (
+      select 1 from media_items mi
+      where mi.id = video_likes.media_item_id and mi.published
+    )
+    and (
+      episode_id is null
+      or exists (
+        select 1 from episodes e
+        where e.id = video_likes.episode_id
+          and e.media_item_id = video_likes.media_item_id
+      )
+    )
+  );
+
+drop policy if exists "Users remove own likes" on video_likes;
+create policy "Users remove own likes"
+  on video_likes for delete
+  to authenticated
+  using (user_id = auth.uid());
+
+-- Toggling in one round trip, and in one transaction: the read of the counter
+-- below happens after the trigger above has already applied the change, so two
+-- people liking the same video at once can't hand each other a stale total.
+-- security invoker on purpose — the policies above stay the enforcement, this
+-- is only here to make the toggle atomic.
+create or replace function toggle_video_like(p_media_item_id uuid, p_episode_id uuid default null)
+returns table (liked boolean, likes int)
+language plpgsql
+set search_path = public
+as $$
+declare
+  v_user uuid := auth.uid();
+  v_deleted int;
+begin
+  if v_user is null then
+    raise exception 'Hay que iniciar sesión para dar me gusta.' using errcode = '42501';
+  end if;
+
+  delete from video_likes
+   where user_id = v_user
+     and media_item_id = p_media_item_id
+     and episode_id is not distinct from p_episode_id;
+
+  get diagnostics v_deleted = row_count;
+
+  if v_deleted = 0 then
+    insert into video_likes (user_id, media_item_id, episode_id)
+    values (v_user, p_media_item_id, p_episode_id);
+    liked := true;
+  else
+    liked := false;
+  end if;
+
+  if p_episode_id is null then
+    select m.like_count into likes from media_items m where m.id = p_media_item_id;
+  else
+    select e.like_count into likes from episodes e where e.id = p_episode_id;
+  end if;
+
+  likes := coalesce(likes, 0);
+  return next;
+end;
+$$;
+
+revoke all on function toggle_video_like(uuid, uuid) from public;
+grant execute on function toggle_video_like(uuid, uuid) to authenticated;

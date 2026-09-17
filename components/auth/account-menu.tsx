@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { LogOut, ShieldCheck, UserRound } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { signOut } from "@/lib/actions/auth";
 import { getAccount } from "@/lib/auth";
 
@@ -21,28 +21,31 @@ export async function AccountMenu() {
   if (!account) {
     return (
       <div className="flex items-center gap-2">
-        <Button render={<Link href="/login" />} variant="ghost" size="sm">
+        {/* A link styled as a button, not a Button rendering a link: Base UI's
+            Button gives whatever it renders button semantics, and a navigation
+            announced as a button is the wrong thing for a screen reader. */}
+        <Link href="/login" className={buttonVariants({ variant: "ghost", size: "sm" })}>
           Ingresar
-        </Button>
-        <Button render={<Link href="/register" />} size="sm">
+        </Link>
+        <Link href="/register" className={buttonVariants({ size: "sm" })}>
           Crear cuenta
-        </Button>
+        </Link>
       </div>
     );
   }
 
   return (
     <div className="flex items-center gap-2">
-      <Button render={<Link href="/account" />} variant="ghost" size="sm">
+      <Link href="/account" className={buttonVariants({ variant: "ghost", size: "sm" })}>
         <UserRound className="size-4" />
         {account.username}
-      </Button>
+      </Link>
 
       {account.role === "admin" && (
-        <Button render={<Link href="/admin" />} variant="outline" size="sm">
+        <Link href="/admin" className={buttonVariants({ variant: "outline", size: "sm" })}>
           <ShieldCheck className="size-4" />
           Panel
-        </Button>
+        </Link>
       )}
 
       <form action={signOut}>

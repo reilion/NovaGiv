@@ -49,3 +49,8 @@ export function formatViews(count: number): string {
 export function formatViewsLabel(count: number): string {
   return `${count.toLocaleString("es")} ${count === 1 ? "vista" : "vistas"}`;
 }
+
+/** Same, for likes — "me gusta" reads the same whatever the number. */
+export function formatLikesLabel(count: number): string {
+  return `${count.toLocaleString("es")} me gusta`;
+}

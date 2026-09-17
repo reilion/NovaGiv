@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { CalendarDays, Eye, Monitor, PlayCircle } from "lucide-react";
+import { CalendarDays, Eye, Heart, Monitor, PlayCircle } from "lucide-react";
 
+import { LikeButton } from "@/components/player/like-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -24,9 +25,15 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { registerVideoView } from "@/lib/actions/views";
 import { toOkRuEmbedUrl } from "@/lib/okru";
 import { formatStreamDate, formatStreamRange } from "@/lib/stream-date";
-import { formatViews, formatViewsLabel } from "@/lib/text";
+import { formatLikesLabel, formatViews, formatViewsLabel } from "@/lib/text";
 import { cn } from "@/lib/utils";
-import { isEpisodic, totalViewsOf, type Episode, type MediaItem } from "@/types/media";
+import {
+  isEpisodic,
+  totalLikesOf,
+  totalViewsOf,
+  type Episode,
+  type MediaItem,
+} from "@/types/media";
 
 /**
  * Preset player sizes. Each caps how much of the window height the picture may
@@ -106,9 +113,14 @@ interface VideoPlayerModalProps {
   item: MediaItem | null;
   /** Query string to navigate back to when the modal is closed (removes `play`). */
   closeHref: string;
+  /**
+   * Videos of this collection the viewer has already liked. `null` means no
+   * session, which is what makes the like button a link to the login form.
+   */
+  likedVideoIds: string[] | null;
 }
 
-export function VideoPlayerModal({ item, closeHref }: VideoPlayerModalProps) {
+export function VideoPlayerModal({ item, closeHref, likedVideoIds }: VideoPlayerModalProps) {
   const searchParams = useSearchParams();
 
   // The URL still says what is open, but it is read here on the client so that
@@ -134,12 +146,18 @@ export function VideoPlayerModal({ item, closeHref }: VideoPlayerModalProps) {
     >
       {/* Keyed by item id so the episode selection resets on its own when a
           different title is opened, instead of syncing it via an effect. */}
-      {item && <PlayerContent key={item.id} item={item} />}
+      {item && <PlayerContent key={item.id} item={item} likedVideoIds={likedVideoIds} />}
     </Dialog>
   );
 }
 
-function PlayerContent({ item }: { item: MediaItem }) {
+function PlayerContent({
+  item,
+  likedVideoIds,
+}: {
+  item: MediaItem;
+  likedVideoIds: string[] | null;
+}) {
   const episodic = isEpisodic(item.type);
   const seasons = useMemo(() => groupBySeason(item.episodes ?? []), [item.episodes]);
 
@@ -168,6 +186,12 @@ function PlayerContent({ item }: { item: MediaItem }) {
   useRegisterView(item.id, playingVideoId, episodic);
 
   const totalViews = totalViewsOf(item);
+  const totalLikes = totalLikesOf(item);
+
+  // The like belongs to the video on screen, not to the collection, so an
+  // episodic title carries one per episode — the same keying as the counters.
+  const playingLikes = (episodic ? activeEpisode?.likes : item.likes) ?? 0;
+  const playingLiked = playingVideoId ? (likedVideoIds ?? []).includes(playingVideoId) : false;
 
   return (
     <DialogContent
@@ -211,7 +235,21 @@ function PlayerContent({ item }: { item: MediaItem }) {
                   </span>
                 )}
               </DialogTitle>
-              <PlayerSizeMenu size={size} onChange={changeSize} />
+              <div className="flex shrink-0 items-center gap-2">
+                {playingVideoId && (
+                  // Keyed by video: a new episode gets a button that starts
+                  // from that episode's own like, not the previous one's.
+                  <LikeButton
+                    key={playingVideoId}
+                    mediaItemId={item.id}
+                    episodeId={episodic ? playingVideoId : undefined}
+                    likes={playingLikes}
+                    liked={playingLiked}
+                    canLike={likedVideoIds !== null}
+                  />
+                )}
+                <PlayerSizeMenu size={size} onChange={changeSize} />
+              </div>
             </div>
             <div className="flex flex-wrap items-center gap-1.5">
               {item.genres.map((genre) => (
@@ -234,6 +272,16 @@ function PlayerContent({ item }: { item: MediaItem }) {
                 <Eye className="size-3" />
                 {formatViewsLabel(totalViews)}
               </Badge>
+              {totalLikes > 0 && (
+                <Badge
+                  variant="secondary"
+                  className="gap-1"
+                  title={episodic ? "Suma de los me gusta de todos los episodios" : undefined}
+                >
+                  <Heart className="size-3" />
+                  {formatLikesLabel(totalLikes)}
+                </Badge>
+              )}
             </div>
             {item.description && (
               <DialogDescription className="text-sm">{item.description}</DialogDescription>
@@ -289,6 +337,15 @@ function PlayerContent({ item }: { item: MediaItem }) {
                             <Eye className="size-3" />
                             {formatViews(episode.views ?? 0)}
                           </span>
+                          {(episode.likes ?? 0) > 0 && (
+                            <span
+                              className="flex items-center gap-1"
+                              title={formatLikesLabel(episode.likes ?? 0)}
+                            >
+                              <Heart className="size-3" />
+                              {formatViews(episode.likes ?? 0)}
+                            </span>
+                          )}
                           {episode.duration && <span>{episode.duration}</span>}
                         </span>
                       </button>

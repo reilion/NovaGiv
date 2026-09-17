@@ -17,6 +17,8 @@ export interface Episode {
   streamedAt?: string;
   /** Times this video was opened in the player. */
   views?: number;
+  /** People who liked this video. One per account, so it can be taken back. */
+  likes?: number;
 }
 
 export interface Season {
@@ -70,6 +72,8 @@ export interface MediaItem {
    * `totalViewsOf` for the number shown to the viewer.
    */
   views?: number;
+  /** Likes of this collection's own video. Episodic ones count on the episodes. */
+  likes?: number;
 }
 
 /** The ok.ru origin of a collection, as edited in the admin form. */
@@ -156,6 +160,12 @@ export const SORT_OPTION_LABELS: Record<SortOption, string> = {
 export function totalViewsOf(item: MediaItem): number {
   const episodeViews = (item.episodes ?? []).reduce((sum, episode) => sum + (episode.views ?? 0), 0);
   return (item.views ?? 0) + episodeViews;
+}
+
+/** Likes of the whole collection: same reasoning as `totalViewsOf`. */
+export function totalLikesOf(item: MediaItem): number {
+  const episodeLikes = (item.episodes ?? []).reduce((sum, episode) => sum + (episode.likes ?? 0), 0);
+  return (item.likes ?? 0) + episodeLikes;
 }
 
 /** Media types that open the episode/season browser instead of playing directly. */

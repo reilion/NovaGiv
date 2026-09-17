@@ -6,10 +6,11 @@ import { EmailForm } from "@/components/account/email-form";
 import { PasswordForm } from "@/components/account/password-form";
 import { UsernameForm } from "@/components/account/username-form";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { signOut } from "@/lib/actions/auth";
 import { getAccount } from "@/lib/auth";
 import { loginPath } from "@/lib/url";
+import { cn } from "@/lib/utils";
 
 export const metadata = {
   title: "Mi cuenta | NovaGiv",
@@ -35,10 +36,13 @@ export default async function AccountPage() {
 
   return (
     <div className="mx-auto w-full max-w-2xl flex-1 px-4 py-8 sm:px-6 lg:px-8">
-      <Button render={<Link href="/" />} variant="ghost" size="sm" className="-ml-2">
+      <Link
+        href="/"
+        className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "-ml-2")}
+      >
         <ArrowLeft className="size-4" />
         Volver al catálogo
-      </Button>
+      </Link>
 
       <header className="mt-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-col gap-1">
@@ -60,9 +64,9 @@ export default async function AccountPage() {
 
         <div className="flex items-center gap-2">
           {account.role === "admin" && (
-            <Button render={<Link href="/admin" />} variant="outline" size="sm">
+            <Link href="/admin" className={buttonVariants({ variant: "outline", size: "sm" })}>
               Panel
-            </Button>
+            </Link>
           )}
           <form action={signOut}>
             <Button type="submit" variant="ghost" size="sm">

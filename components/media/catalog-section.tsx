@@ -6,7 +6,7 @@ import {
   parseFilterParams,
   shouldGroupByYear,
 } from "@/lib/media-filter";
-import { getMediaItems } from "@/lib/queries";
+import { getLikedVideoIds, getMediaItems } from "@/lib/queries";
 import { buildQueryString, type SearchParamsRecord } from "@/lib/url";
 
 interface CatalogSectionProps {
@@ -28,6 +28,10 @@ export async function CatalogSection({ searchParams }: CatalogSectionProps) {
   const selectedItem = playSlug ? (items.find((item) => item.slug === playSlug) ?? null) : null;
   const closeHref = `?${buildQueryString(searchParams, { play: null })}`;
 
+  // Only for the collection whose player is open: its like button is the one on
+  // screen, and the totals the cards show already come off the catalog rows.
+  const likedVideoIds = selectedItem ? await getLikedVideoIds(selectedItem.id) : null;
+
   const grouped = shouldGroupByYear(filters);
 
   return (
@@ -40,7 +44,11 @@ export async function CatalogSection({ searchParams }: CatalogSectionProps) {
       ) : (
         <MediaGrid items={filteredItems} currentParams={searchParams} />
       )}
-      <VideoPlayerModal item={selectedItem} closeHref={closeHref} />
+      <VideoPlayerModal
+        item={selectedItem}
+        closeHref={closeHref}
+        likedVideoIds={likedVideoIds}
+      />
     </>
   );
 }

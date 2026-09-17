@@ -21,6 +21,7 @@ interface EpisodeRow {
   thumbnail_url: string | null;
   streamed_at: string | null;
   view_count: number | null;
+  like_count: number | null;
 }
 
 interface MediaItemRow {
@@ -44,6 +45,7 @@ interface MediaItemRow {
   okru_channel_url: string | null;
   okru_channel_primary: boolean | null;
   view_count: number | null;
+  like_count: number | null;
   created_at: string;
   episodes: EpisodeRow[] | null;
 }
@@ -61,6 +63,7 @@ function mapEpisode(row: EpisodeRow): Episode {
     // as a plain string so no timezone conversion ever happens.
     streamedAt: row.streamed_at ?? undefined,
     views: row.view_count ?? 0,
+    likes: row.like_count ?? 0,
   };
 }
 
@@ -86,6 +89,7 @@ function mapMediaItem(row: MediaItemRow): MediaItem {
     okruChannelUrl: row.okru_channel_url ?? undefined,
     okruChannelPrimary: row.okru_channel_primary ?? undefined,
     views: row.view_count ?? 0,
+    likes: row.like_count ?? 0,
     createdAt: row.created_at,
     episodes: row.episodes?.length
       ? row.episodes
@@ -182,6 +186,39 @@ export async function getMediaItemById(id: string): Promise<MediaItem | null> {
   }
 
   return mapMediaItem(data as MediaItemRow);
+}
+
+/**
+ * Which videos of one collection the person browsing has already liked, as the
+ * ids the player keys on: the episode's for an episodic collection, the
+ * collection's own for a movie, karaoke or especial.
+ *
+ * `null` means nobody is signed in — the difference between "liked nothing" and
+ * "cannot like yet", which is what turns the button into a link to the login
+ * form. Scoped to the open collection because that is the only one whose like
+ * button is on screen; the totals the cards show come off the catalog rows.
+ */
+export async function getLikedVideoIds(mediaItemId: string): Promise<string[] | null> {
+  if (!isSupabaseConfigured) return null;
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return null;
+
+  const { data, error } = await supabase
+    .from("video_likes")
+    .select("media_item_id, episode_id")
+    .eq("media_item_id", mediaItemId);
+
+  if (error) {
+    console.error("getLikedVideoIds error —", error.message);
+    return [];
+  }
+
+  return (data ?? []).map((row) => row.episode_id ?? row.media_item_id);
 }
 
 /** Streamer profile/socials. Swap for a `streamer_profile` table when one exists. */

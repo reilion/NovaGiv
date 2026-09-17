@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useActionState } from "react";
 import { MailCheck } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
@@ -14,6 +14,7 @@ import {
   USERNAME_MIN_LENGTH,
 } from "@/lib/account";
 import { signUp } from "@/lib/actions/auth";
+import { cn } from "@/lib/utils";
 
 export function RegisterForm() {
   const [state, formAction, isPending] = useActionState(signUp, undefined);
@@ -31,9 +32,9 @@ export function RegisterForm() {
           <CardDescription>{state.notice}</CardDescription>
         </CardHeader>
         <CardContent>
-          <Button render={<Link href="/login" />} className="h-9 w-full">
+          <Link href="/login" className={cn(buttonVariants(), "h-9 w-full")}>
             Ir a iniciar sesión
-          </Button>
+          </Link>
         </CardContent>
       </Card>
     );

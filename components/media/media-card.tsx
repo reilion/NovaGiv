@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { CalendarDays, Clock, Eye, Heart, Layers, Play, Search } from "lucide-react";
+import { CalendarDays, Check, Clock, Eye, Heart, Layers, Play, Search } from "lucide-react";
 
 import { AspectRatio } from "@/components/ui/aspect-ratio";
 import { Badge } from "@/components/ui/badge";
@@ -20,6 +20,8 @@ interface MediaCardProps {
   item: MediaItem;
   /** The active search, so the card can point at the episode that matched it. */
   search?: string;
+  /** True once this account has opened the collection — see the history shelf. */
+  watched?: boolean;
 }
 
 /**
@@ -31,7 +33,7 @@ interface MediaCardProps {
  * drawn as a dialog over the catalog (app/@modal), so the URL is shareable
  * while the catalog underneath keeps its filters and scroll position.
  */
-export function MediaCard({ item, search }: MediaCardProps) {
+export function MediaCard({ item, search, watched }: MediaCardProps) {
   const episodic = isEpisodic(item.type);
   const episodeCount = item.episodes?.length ?? 0;
 
@@ -66,6 +68,13 @@ export function MediaCard({ item, search }: MediaCardProps) {
             <Play className="size-5 fill-current" />
           </span>
         </div>
+
+        {watched && (
+          <div className="absolute right-2 top-2 flex items-center gap-1 rounded-md bg-black/60 px-1.5 py-0.5 text-[10px] text-foreground backdrop-blur-sm">
+            <Check className="size-3" />
+            Visto
+          </div>
+        )}
 
         <div className="absolute left-2 top-2 flex flex-wrap gap-1">
           {item.genres.slice(0, 2).map((genre) => (

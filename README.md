@@ -60,6 +60,11 @@ Ejecuta [supabase/schema.sql](supabase/schema.sql) completo en el editor SQL de 
 idempotente: crea tablas, índices, políticas RLS, triggers y funciones, y también sirve de
 migración sobre una versión anterior del mismo archivo.
 
+> **Vuelve a ejecutarlo tras actualizar.** La última versión añade `watch_history` y amplía
+> `register_video_view()`. Hasta que lo hagas, el historial y «Seguir viendo» se quedan
+> vacíos —están escritos para no romper la página si la tabla falta—, pero no registrarán
+> nada.
+
 ### 4. Crear el administrador
 
 Regístrate desde `/register` y luego promueve la cuenta a mano:
@@ -123,6 +128,8 @@ los videos nuevos.
 | `/v/[slug]` | Un título: reproductor, ficha y lista de episodios. `?ep=12` (o `?ep=2x12`) abre un episodio concreto |
 | `/login`, `/register` | Se entra con **nombre de usuario**, no con correo |
 | `/account` | Cambiar usuario, correo y contraseña |
+| `/me-gusta` | Los videos que la cuenta guardó, cada uno enlazando a su episodio |
+| `/historial` | Una entrada por colección, en el punto donde se dejó |
 | `/auth/confirm` | Aterrizaje de los enlaces que Supabase envía por correo |
 | `/admin` | Tabla del catálogo (incluye borradores) |
 | `/admin/import` | Asistente de importación desde ok.ru |
@@ -186,6 +193,25 @@ catálogo cuyo contenido real son streams sueltos, eso es lo que lo hace encontr
 colección se llama «H1NMTSR», pero lo que alguien recuerda es la noche que vio. Cuando lo que
 coincide son episodios, la tarjeta lo dice («3 episodios coinciden») y su enlace abre
 directamente en el primero, con el `?ep=` correspondiente.
+
+### Lo que recuerda una cuenta
+
+Dos listas, las dos derivadas de filas que ya se escribían solas:
+
+- **Mis me gusta** (`/me-gusta`) sale de `video_likes`, con una fila por video.
+- **Historial** y la estantería «Seguir viendo» del catálogo salen de `watch_history`, con
+  una fila por colección: dónde retomarla y cuándo se abrió por última vez. La escribe
+  `register_video_view()`, el mismo paso que ya contaba la reproducción, así que no hay una
+  segunda ida y vuelta ni forma de falsear el historial desde el navegador — la tabla no tiene
+  política de inserción.
+
+El punto de retomada se guarda como el mismo `?ep=` que viaja en la URL («12», «2x12») y no
+como el id del episodio, por lo de siempre: guardar una colección en /admin reinserta todos
+sus episodios y un id quedaría colgando.
+
+Las dos listas se resuelven contra el catálogo ya cargado en memoria en vez de con un join,
+de modo que un título despublicado desde entonces desaparece de la lista en lugar de
+renderizarse como una fila muerta.
 
 ### Modelo de datos
 
@@ -296,15 +322,16 @@ del reproductor solo pinta un icono.
 
 ### Funcionalidades propuestas
 
-Aprovechando que ya existen cuentas y `video_likes`:
+Aprovechando que ya existen cuentas y `video_likes`. Las cinco primeras ya están
+implementadas:
 
 | Idea | Por qué encaja | Esfuerzo |
 |---|---|---|
-| Página "Mis me gusta" | La tabla y su RLS ya existen; falta la consulta y la vista | Muy bajo |
-| Miniaturas en la lista de episodios | `thumbnail_url` ya está poblado y sin usar | Muy bajo |
-| Siguiente/anterior episodio y autoplay | Hoy hay que volver a la lista para cada stream | Bajo |
-| Buscador dentro de la lista de episodios | Un canal de 200 streams da una lista interminable dentro del modal | Bajo |
-| "Seguir viendo" / historial | Las vistas ya se marcan en `sessionStorage`; guardarlas por cuenta da historial y marca de "visto" en la tarjeta | Bajo |
+| ~~Página "Mis me gusta"~~ **hecho** | La tabla y su RLS ya existen; falta la consulta y la vista | Muy bajo |
+| ~~Miniaturas en la lista de episodios~~ **hecho** | `thumbnail_url` ya está poblado y sin usar | Muy bajo |
+| ~~Siguiente/anterior episodio y autoplay~~ **hecho** | Hoy hay que volver a la lista para cada stream | Bajo |
+| ~~Buscador dentro de la lista de episodios~~ **hecho** | Un canal de 200 streams da una lista interminable dentro del modal | Bajo |
+| ~~"Seguir viendo" / historial~~ **hecho** | Las vistas ya se marcan en `sessionStorage`; guardarlas por cuenta da historial y marca de "visto" en la tarjeta | Bajo |
 | Badge "Nuevo" | Con `created_at` contra la última visita; da motivo para volver | Bajo |
 | Atajos de teclado (←/→) | El modal ya cierra con Esc; falta navegar episodios | Bajo |
 | Lista "ver después" | Complementa los me gusta, misma forma de tabla | Medio |
@@ -324,6 +351,22 @@ Aprovechando que ya existen cuentas y `video_likes`:
 - **Autocompletar metadatos** desde TMDB o AniList al crear un título: los CDN ya están
   permitidos en [next.config.ts:18](next.config.ts#L18), así que la intención ya estaba ahí.
 
+### Dos cosas que conviene saber
+
+**Un me gusta sobre un episodio no sobrevive a una edición de su colección.**
+`video_likes.episode_id` referencia `episodes (id) on delete cascade`, y guardar una colección
+en /admin borra y reinserta todos sus episodios ([lib/media-write.ts](lib/media-write.ts)):
+los me gusta de esos videos se van con ellos. Las vistas sí se traspasan a mano por URL de
+ok.ru, los me gusta no. Ahora que existe una página que los lista, el agujero se nota. El
+arreglo es cambiar la clave del me gusta a temporada/número, como ya hacen `?ep=` y el
+historial, y traspasarlos en `writeMediaItem` igual que los contadores.
+
+**El autoplay es solo al cambiar de episodio.** El iframe de ok.ru es de otro origen y no
+avisa de nada, así que no hay forma de saber cuándo termina un video: encadenar al siguiente
+por sí solo no es posible con este reproductor. Lo que sí hace es arrancar reproduciendo
+cuando el episodio se elige con un clic, que es cuando la política de autoplay del navegador
+lo permite.
+
 ### Base técnica
 
 - No hay tests ni CI.
@@ -334,6 +377,6 @@ Aprovechando que ya existen cuentas y `video_likes`:
 ### Roadmap sugerido
 
 1. ~~**`/v/[slug]` con intercepting routes**~~ — hecho.
-2. **"Mis me gusta" e historial** — convierte las cuentas existentes en algo con propósito.
+2. ~~**"Mis me gusta" e historial**~~ — hecho.
 3. ~~**Filtros en `Sheet` en móvil**~~ — hecho.
 4. **Paginación en servidor** — antes de que el catálogo crezca lo suficiente como para dolerte.

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ArrowLeft, LogOut, ShieldCheck } from "lucide-react";
+import { ArrowLeft, Clock, Heart, LogOut, ShieldCheck } from "lucide-react";
 
 import { EmailForm } from "@/components/account/email-form";
 import { PasswordForm } from "@/components/account/password-form";
@@ -77,7 +77,36 @@ export default async function AccountPage() {
         </div>
       </header>
 
-      <div className="mt-6 flex flex-col gap-4">
+      <div className="mt-6 grid grid-cols-2 gap-3">
+        <Link
+          href="/me-gusta"
+          className={cn(
+            buttonVariants({ variant: "outline" }),
+            "h-auto justify-start gap-3 px-4 py-3"
+          )}
+        >
+          <Heart className="size-5 text-primary" />
+          <span className="flex flex-col items-start">
+            <span className="text-sm font-medium">Mis me gusta</span>
+            <span className="text-xs font-normal text-muted-foreground">Lo que guardaste</span>
+          </span>
+        </Link>
+        <Link
+          href="/historial"
+          className={cn(
+            buttonVariants({ variant: "outline" }),
+            "h-auto justify-start gap-3 px-4 py-3"
+          )}
+        >
+          <Clock className="size-5 text-primary" />
+          <span className="flex flex-col items-start">
+            <span className="text-sm font-medium">Historial</span>
+            <span className="text-xs font-normal text-muted-foreground">Seguir viendo</span>
+          </span>
+        </Link>
+      </div>
+
+      <div className="mt-4 flex flex-col gap-4">
         <UsernameForm username={account.username} />
         <EmailForm email={account.email} />
         <PasswordForm />

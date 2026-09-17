@@ -3,6 +3,7 @@ import "server-only";
 import { cache } from "react";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
+import { findEpisodeByParam } from "@/lib/episode-param";
 import { createClient } from "@/lib/supabase/server";
 import { MOCK_MEDIA, MOCK_STREAMER } from "@/lib/mock-data";
 import type { Episode, MediaItem } from "@/types/media";
@@ -219,6 +220,124 @@ export async function getSitemapEntries(): Promise<SitemapEntry[]> {
     lastModified: (row.last_streamed_at as string | null) ?? (row.created_at as string),
   }));
 }
+
+/** One video of the catalog, as "Mis me gusta" and the history list show it. */
+export interface VideoEntry {
+  item: MediaItem;
+  /** Absent for a collection's own video: a movie, karaoke or especial. */
+  episode?: Episode;
+  /** When it was liked, or last opened. ISO timestamp. */
+  at: string;
+}
+
+/**
+ * Resolves rows that point at a video against the catalog the visitor can
+ * actually see.
+ *
+ * Going through `getMediaItems()` rather than joining in the query is on
+ * purpose: it is already loaded and request-cached, and it only ever contains
+ * published collections, so a title unpublished since — or an episode the admin
+ * has rewritten away — simply drops out of the list instead of rendering as a
+ * dead row.
+ */
+async function resolveVideoEntries<T>(
+  rows: T[],
+  pick: (row: T) => { mediaItemId: string; at: string; episodeOf: (item: MediaItem) => Episode | undefined | null }
+): Promise<VideoEntry[]> {
+  const items = await getMediaItems();
+  const byId = new Map(items.map((item) => [item.id, item]));
+
+  return rows.flatMap((row) => {
+    const { mediaItemId, at, episodeOf } = pick(row);
+    const item = byId.get(mediaItemId);
+    if (!item) return [];
+
+    const episode = episodeOf(item);
+    // null means "this row named an episode, and it is gone".
+    if (episode === null) return [];
+
+    return [{ item, episode: episode ?? undefined, at }];
+  });
+}
+
+/**
+ * Every video the signed-in account has liked, newest first. `null` means there
+ * is no session, which is what sends /me-gusta to the login form.
+ */
+export const getLikedVideos = cache(async function getLikedVideos(): Promise<VideoEntry[] | null> {
+  if (!isSupabaseConfigured) return null;
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return null;
+
+  // No user filter needed: RLS only ever hands back your own likes.
+  const { data, error } = await supabase
+    .from("video_likes")
+    .select("media_item_id, episode_id, created_at")
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("getLikedVideos error —", error.message);
+    return [];
+  }
+
+  return resolveVideoEntries(data ?? [], (row) => ({
+    mediaItemId: row.media_item_id as string,
+    at: row.created_at as string,
+    episodeOf: (item) => {
+      const episodeId = row.episode_id as string | null;
+      if (!episodeId) return undefined;
+      return item.episodes?.find((episode) => episode.id === episodeId) ?? null;
+    },
+  }));
+});
+
+/**
+ * What the account has been watching, most recent first — one entry per
+ * collection, pointing at the episode to resume from.
+ *
+ * Fails soft on purpose: until `supabase/schema.sql` is re-run, `watch_history`
+ * does not exist, and a catalog that refuses to render because of a table
+ * nobody has created yet would be a worse bug than a missing shelf.
+ */
+export const getWatchHistory = cache(async function getWatchHistory(): Promise<
+  VideoEntry[] | null
+> {
+  if (!isSupabaseConfigured) return null;
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return null;
+
+  const { data, error } = await supabase
+    .from("watch_history")
+    .select("media_item_id, episode_ref, watched_at")
+    .order("watched_at", { ascending: false });
+
+  if (error) {
+    console.error("getWatchHistory error —", error.message);
+    return [];
+  }
+
+  return resolveVideoEntries(data ?? [], (row) => ({
+    mediaItemId: row.media_item_id as string,
+    at: row.watched_at as string,
+    episodeOf: (item) => {
+      const ref = row.episode_ref as string | null;
+      if (!ref) return undefined;
+      // A ref that no longer resolves means the episode list was rewritten; the
+      // collection is still worth showing, just from its start.
+      return findEpisodeByParam(item.episodes ?? [], ref) ?? undefined;
+    },
+  }));
+});
 
 /** Single item by primary key, used by the admin edit form. */
 export async function getMediaItemById(id: string): Promise<MediaItem | null> {

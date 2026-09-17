@@ -331,6 +331,50 @@ create policy "Admin access on okru_channels"
   using (public.is_admin())
   with check (public.is_admin());
 
+-- ---------------------------------------------------------------------------
+-- Watch history
+-- ---------------------------------------------------------------------------
+-- One row per account per collection: where to pick it up again, and when it
+-- was last opened. That is what "Seguir viendo" needs, and keeping it to one
+-- row per collection is also what stops a binge from burying everything else
+-- in the history.
+--
+-- The resume point is stored as the same "12" / "2x12" the URL carries, never
+-- as an episode id: saving a collection in /admin deletes and reinserts every
+-- episode row (see lib/media-write.ts), so an id would be dangling after the
+-- next edit while the season/number pair survives it. Keep the shape in step
+-- with `episodeParam()` in lib/episode-param.ts.
+
+create table if not exists watch_history (
+  user_id uuid not null references auth.users (id) on delete cascade,
+  media_item_id uuid not null references media_items (id) on delete cascade,
+  -- Null for a collection with a single video: a movie, karaoke or especial.
+  episode_ref text,
+  watched_at timestamptz not null default now(),
+  primary key (user_id, media_item_id)
+);
+
+create index if not exists watch_history_user_watched_idx
+  on watch_history (user_id, watched_at desc);
+
+alter table watch_history enable row level security;
+
+-- Your own history and nothing else. There is deliberately no insert or update
+-- policy: the only way in is register_video_view() below, which writes it as
+-- part of counting the play, so a browser cannot forge somebody's history.
+drop policy if exists "Users read own history" on watch_history;
+create policy "Users read own history"
+  on watch_history for select
+  to authenticated
+  using (user_id = auth.uid());
+
+-- Removing a title from "Seguir viendo" is the one write a session may make.
+drop policy if exists "Users delete own history" on watch_history;
+create policy "Users delete own history"
+  on watch_history for delete
+  to authenticated
+  using (user_id = auth.uid());
+
 -- Counting a play is the only write the public site makes, and the policies
 -- above only let an authenticated admin write. This function is the exception:
 -- security definer, so an anonymous visitor can bump exactly one counter by one
@@ -342,21 +386,51 @@ language plpgsql
 security definer
 set search_path = public
 as $$
+declare
+  v_user uuid := auth.uid();
+  v_published boolean;
+  v_ref text;
 begin
+  select published into v_published from media_items where id = p_media_item_id;
+  if not coalesce(v_published, false) then
+    return;
+  end if;
+
   if p_episode_id is null then
     update media_items
       set view_count = view_count + 1
-      where id = p_media_item_id and published;
+      where id = p_media_item_id;
   else
     update episodes
       set view_count = view_count + 1
       where id = p_episode_id
-        and media_item_id = p_media_item_id
-        and exists (
-          select 1 from media_items
-          where media_items.id = p_media_item_id and media_items.published
-        );
+        and media_item_id = p_media_item_id;
   end if;
+
+  -- Anonymous plays only move the counter; there is nobody to remember them
+  -- for. auth.uid() still reports the caller inside a security definer
+  -- function, so this is the signed-in half of the same round trip.
+  if v_user is null then
+    return;
+  end if;
+
+  if p_episode_id is not null then
+    -- Mirrors episodeParam() in lib/episode-param.ts: "12", or "2x12" once the
+    -- collection has more than one season.
+    select case
+             when coalesce(e.season_number, 1) > 1
+               then coalesce(e.season_number, 1)::text || 'x' || e.episode_number::text
+             else e.episode_number::text
+           end
+      into v_ref
+      from episodes e
+     where e.id = p_episode_id and e.media_item_id = p_media_item_id;
+  end if;
+
+  insert into watch_history (user_id, media_item_id, episode_ref, watched_at)
+  values (v_user, p_media_item_id, v_ref, now())
+  on conflict (user_id, media_item_id)
+  do update set episode_ref = excluded.episode_ref, watched_at = excluded.watched_at;
 end;
 $$;
 

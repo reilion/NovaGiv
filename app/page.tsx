@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { FilterBarContainer } from "@/components/filters/filter-bar-container";
 import { FilterBarSkeleton } from "@/components/filters/filter-bar-skeleton";
 import { CatalogSection } from "@/components/media/catalog-section";
+import { ContinueWatching } from "@/components/media/continue-watching";
 import { MediaGridSkeleton } from "@/components/media/media-grid-skeleton";
 import { ProfileHeader } from "@/components/profile/profile-header";
 import { getStreamerProfile } from "@/lib/queries";
@@ -36,6 +37,12 @@ export default async function HomePage({ searchParams }: HomePageProps) {
       <ProfileHeader profile={profile} />
 
       <main className="mx-auto w-full max-w-7xl flex-1 px-4 sm:px-6 lg:px-8">
+        {/* Its own boundary, and no fallback: for everyone signed out it
+            renders nothing, and it must not hold up the catalog to say so. */}
+        <Suspense fallback={null}>
+          <ContinueWatching />
+        </Suspense>
+
         <Suspense fallback={<FilterBarSkeleton />}>
           <FilterBarContainer />
         </Suspense>

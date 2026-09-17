@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { LogOut, ShieldCheck, UserRound } from "lucide-react";
+import { Heart, LogOut, ShieldCheck, UserRound } from "lucide-react";
 
 import { Button, buttonVariants } from "@/components/ui/button";
 import { signOut } from "@/lib/actions/auth";
@@ -36,6 +36,17 @@ export async function AccountMenu() {
 
   return (
     <div className="flex items-center gap-2">
+      {/* The one shortcut worth a permanent spot: everything else an account
+          can reach lives on /account. */}
+      <Link
+        href="/me-gusta"
+        className={buttonVariants({ variant: "ghost", size: "sm" })}
+        title="Mis me gusta"
+      >
+        <Heart className="size-4" />
+        <span className="sr-only sm:not-sr-only">Me gusta</span>
+      </Link>
+
       <Link href="/account" className={buttonVariants({ variant: "ghost", size: "sm" })}>
         <UserRound className="size-4" />
         {account.username}

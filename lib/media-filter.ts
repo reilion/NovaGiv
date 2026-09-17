@@ -88,6 +88,21 @@ function episodeHaystack(episode: Episode): string {
 }
 
 /**
+ * Episodes matching a query. Shared by two searches that have to behave the
+ * same: the one over the whole catalog, and the one inside the player's episode
+ * list — a collection with two hundred streams is not a list anybody scrolls.
+ *
+ * An empty query returns everything, which is what the list wants; the catalog
+ * side guards against that itself.
+ */
+export function filterEpisodes(episodes: Episode[], search: string): Episode[] {
+  const query = normalizeSearch(search.trim());
+  if (!query) return episodes;
+
+  return episodes.filter((episode) => episodeHaystack(episode).includes(query));
+}
+
+/**
  * Episodes of a collection matching the query — what a card counts, and what
  * decides which episode its link opens.
  *
@@ -96,10 +111,9 @@ function episodeHaystack(episode: Episode): string {
  * for every item it returns.
  */
 export function matchingEpisodes(item: MediaItem, search: string): Episode[] {
-  const query = normalizeSearch(search.trim());
-  if (!query) return [];
+  if (!search.trim()) return [];
 
-  return (item.episodes ?? []).filter((episode) => episodeHaystack(episode).includes(query));
+  return filterEpisodes(item.episodes ?? [], search);
 }
 
 /**

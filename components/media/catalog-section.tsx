@@ -5,7 +5,7 @@ import {
   parseFilterParams,
   shouldGroupByYear,
 } from "@/lib/media-filter";
-import { getMediaItems } from "@/lib/queries";
+import { getMediaItems, getWatchHistory } from "@/lib/queries";
 import { type SearchParamsRecord } from "@/lib/url";
 
 interface CatalogSectionProps {
@@ -21,16 +21,21 @@ interface CatalogSectionProps {
  * nothing here has to know which title is playing.
  */
 export async function CatalogSection({ searchParams }: CatalogSectionProps) {
-  const items = await getMediaItems();
+  // Both are request-cached, so the shelf above the grid shares this history.
+  const [items, history] = await Promise.all([getMediaItems(), getWatchHistory()]);
   const filters = parseFilterParams(searchParams);
   const filteredItems = filterAndSortMedia(items, filters);
+
+  // One row per collection, so this is at most "everything watched once".
+  const watchedIds = new Set((history ?? []).map((entry) => entry.item.id));
 
   return shouldGroupByYear(filters) ? (
     <MediaGridByYear
       groups={groupByStreamYear(filteredItems, filters.sort === "streamed-asc")}
       search={filters.search}
+      watchedIds={watchedIds}
     />
   ) : (
-    <MediaGrid items={filteredItems} search={filters.search} />
+    <MediaGrid items={filteredItems} search={filters.search} watchedIds={watchedIds} />
   );
 }

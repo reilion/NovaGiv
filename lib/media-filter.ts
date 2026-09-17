@@ -16,7 +16,8 @@ export interface FilterParams {
   to: string;
 }
 
-const DEFAULT_SORT: SortOption = "streamed";
+/** Also what the filter bar falls back to, so the two cannot drift apart. */
+export const DEFAULT_SORT: SortOption = "streamed";
 
 function str(value: string | string[] | undefined, fallback: string): string {
   return typeof value === "string" ? value : fallback;

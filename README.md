@@ -172,6 +172,14 @@ en tildes o mayúsculas. Se agrupan en una sola opción, y gana la que conserva 
 («Fantasía» sobre «Fantasia») por ser la correcta; el filtro compara igual, de modo que
 `?genre=Fantasia` y `?genre=Fantasía` devuelven lo mismo y los enlaces viejos siguen valiendo.
 
+La barra es *sticky* y en móvil se queda en dos filas —pestañas y buscador—, porque el resto
+(género, orden y fechas) se pliega en un `Sheet` con un badge que cuenta lo que hay dentro
+([filter-bar.tsx](components/filters/filter-bar.tsx)). Los mismos controles se renderizan
+inline en escritorio desde un único componente
+([filter-controls.tsx](components/filters/filter-controls.tsx)), así que no hay dos versiones
+que mantener. Debajo, los filtros activos aparecen como chips que se quitan uno a uno, con un
+«Limpiar todo» que vacía también el buscador y la pestaña.
+
 La búsqueda no mira solo el título de la colección: también su descripción y **los episodios**
 —su título y su fecha de stream, para que valga tanto «30 junio» como «2026-06-30»—. En un
 catálogo cuyo contenido real son streams sueltos, eso es lo que lo hace encontrable: la
@@ -248,7 +256,7 @@ La base es sólida; lo que sigue son huecos concretos, ordenados por impacto.
 
 ### Fricciones detectadas
 
-> **Ya resueltos.** Cuatro de los hallazgos de abajo están implementados:
+> **Ya resueltos.** Cinco de los hallazgos de abajo están implementados:
 >
 > - **Página por título y episodio en la URL** — `/v/[slug]`, la ruta que la intercepta como
 >   modal, `?ep=`, la imagen OG por título, `sitemap.ts`, `robots.ts`, `error.tsx` y
@@ -257,20 +265,16 @@ La base es sólida; lo que sigue son huecos concretos, ordenados por impacto.
 >   cerrarse con Escape.
 > - **Búsqueda sobre episodios y descripción, y géneros derivados** con su conteo. Ver
 >   «Búsqueda y filtros».
+> - **La barra de filtros en móvil** — plegada en un `Sheet` con badge, más chips de filtros
+>   activos y «Limpiar todo». Pasó de ocupar media pantalla a 109 px en un teléfono de 844 px.
+>   De paso se corrigió que el debounce del buscador reescribiera la URL con los parámetros
+>   que había capturado 300 ms antes, lo que deshacía «Limpiar todo».
 >
 > Derivar los géneros sacó a la luz un problema de datos que la lista fija ocultaba: hay
 > duplicados en el catálogo. El código agrupa los que solo difieren en tildes o mayúsculas
 > («Fantasia»/«Fantasía»), pero quedan pares que son dos nombres distintos para lo mismo y
 > solo se arreglan editando los títulos en /admin: «Sobrenatural» (14) y «Supernatural» (7),
 > «Recuerdos de vida» (11) y «Recuentos de la vida» (1), «Suspenso» (5) y «Thriller» (1).
-
-**La barra de filtros ocupa media pantalla en móvil.** Pestañas, búsqueda, dos desplegables y
-la fila de fechas, todo *sticky* ([filter-bar.tsx:69](components/filters/filter-bar.tsx#L69)).
-Debería colapsarse en un `Sheet` — el componente ya está en
-[components/ui/sheet.tsx](components/ui/sheet.tsx) y no se usa en ninguna parte — con un badge
-del número de filtros activos, dejando fuera solo las pestañas y la búsqueda. Faltan además
-chips de filtros activos que se puedan quitar y un "limpiar todo" (hoy solo hay "limpiar
-fechas").
 
 **No hay recuperación de contraseña.** El formulario de registro promete que el correo sirve
 para "recuperarla" ([register-form.tsx:49](components/auth/register-form.tsx#L49)) y la ruta
@@ -331,5 +335,5 @@ Aprovechando que ya existen cuentas y `video_likes`:
 
 1. ~~**`/v/[slug]` con intercepting routes**~~ — hecho.
 2. **"Mis me gusta" e historial** — convierte las cuentas existentes en algo con propósito.
-3. **Filtros en `Sheet` en móvil** — es donde más se nota hoy.
+3. ~~**Filtros en `Sheet` en móvil**~~ — hecho.
 4. **Paginación en servidor** — antes de que el catálogo crezca lo suficiente como para dolerte.

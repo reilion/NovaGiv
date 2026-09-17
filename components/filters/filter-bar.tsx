@@ -14,10 +14,18 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FILTER_TABS, GENRES, MONTHS, SORT_OPTIONS } from "@/lib/constants";
+import { FILTER_TABS, MONTHS, SORT_OPTIONS } from "@/lib/constants";
+import type { GenreCount } from "@/lib/media-filter";
 import { cn } from "@/lib/utils";
 
-export function FilterBar({ streamYears = [] }: { streamYears?: number[] }) {
+interface FilterBarProps {
+  /** Years present in the catalog, newest first. */
+  streamYears?: number[];
+  /** Genres present in the catalog, with how many collections carry each. */
+  genres?: GenreCount[];
+}
+
+export function FilterBar({ streamYears = [], genres = [] }: FilterBarProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -106,9 +114,12 @@ export function FilterBar({ streamYears = [] }: { streamYears?: number[] }) {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todos los géneros</SelectItem>
-            {GENRES.map((genre) => (
+            {/* Straight from the catalog, so every option here has something
+                behind it and a genre invented in /admin shows up on its own. */}
+            {genres.map(({ genre, count }) => (
               <SelectItem key={genre} value={genre}>
-                {genre}
+                <span className="flex-1">{genre}</span>
+                <span className="text-xs text-muted-foreground">{count}</span>
               </SelectItem>
             ))}
           </SelectContent>

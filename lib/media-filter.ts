@@ -1,6 +1,6 @@
-import { normalizeSearch } from "@/lib/text";
+import { normalizeSearch, stripAccents } from "@/lib/text";
 import type { SearchParamsRecord } from "@/lib/url";
-import type { MediaItem, MediaType, SortOption } from "@/types/media";
+import type { Episode, MediaItem, MediaType, SortOption } from "@/types/media";
 
 export interface FilterParams {
   type: MediaType | "all";
@@ -77,6 +77,109 @@ function coveredDates(item: MediaItem): string[] {
     .map((date) => date.slice(0, 10));
 }
 
+/**
+ * What one episode can be found by: its title and, so that an ISO-style query
+ * ("2026-07-13") lands too, the stream date behind it. Both matter because the
+ * importer names an episode after the night it was streamed.
+ */
+function episodeHaystack(episode: Episode): string {
+  return normalizeSearch(`${episode.title} ${episode.streamedAt ?? ""}`);
+}
+
+/**
+ * Episodes of a collection matching the query — what a card counts, and what
+ * decides which episode its link opens.
+ *
+ * Exported so the card can recompute it for the items it actually draws,
+ * instead of `filterAndSortMedia` carrying matches through the year grouping
+ * for every item it returns.
+ */
+export function matchingEpisodes(item: MediaItem, search: string): Episode[] {
+  const query = normalizeSearch(search.trim());
+  if (!query) return [];
+
+  return (item.episodes ?? []).filter((episode) => episodeHaystack(episode).includes(query));
+}
+
+/**
+ * A collection matches when its own title or description does, or when any of
+ * its episodes do. Reaching the episodes is what makes a catalog of dated
+ * streams findable at all: the collection is called "H1NMTSR", while what
+ * somebody remembers is the night they watched it.
+ */
+function matchesSearch(item: MediaItem, query: string): boolean {
+  if (normalizeSearch(item.title).includes(query)) return true;
+  if (item.description && normalizeSearch(item.description).includes(query)) return true;
+
+  return (item.episodes ?? []).some((episode) => episodeHaystack(episode).includes(query));
+}
+
+export interface GenreCount {
+  genre: string;
+  /** Collections carrying it — shown beside the name in the filter. */
+  count: number;
+}
+
+/** Diacritics a spelling keeps, which is what picks "Fantasía" over "Fantasia". */
+function accentCount(value: string): number {
+  return [...value].filter((char) => stripAccents(char) !== char).length;
+}
+
+/**
+ * Which spelling of a genre to show. The one that kept its accents wins — it is
+ * the correct Spanish one — and between equals, the one used most.
+ */
+function preferredSpelling(variants: Map<string, number>): string {
+  return [...variants.entries()].sort(
+    ([a, aCount], [b, bCount]) =>
+      accentCount(b) - accentCount(a) || bCount - aCount || a.localeCompare(b, "es")
+  )[0][0];
+}
+
+/**
+ * The genres actually present in the catalog, alphabetically, with how many
+ * collections each one holds.
+ *
+ * Derived rather than listed by hand (the same reasoning as
+ * `collectStreamYears`): the admin form takes genres as free text, so a fixed
+ * list would both offer genres nothing is filed under and never show a new one.
+ *
+ * Spellings that differ only in case or accents are folded into one option —
+ * "Fantasia", "Fantasía" and "fantasía" have all made it into the catalog, and
+ * left apart they would split one genre's collections across three entries that
+ * each look incomplete. `filterAndSortMedia` matches them the same way, so
+ * picking any of them finds all of it.
+ */
+export function collectGenres(items: MediaItem[]): GenreCount[] {
+  const groups = new Map<string, { variants: Map<string, number>; count: number }>();
+
+  for (const item of items) {
+    // Per item, so a collection tagged both "Fantasia" and "Fantasía" — or the
+    // same genre twice — counts once.
+    const counted = new Set<string>();
+
+    for (const raw of item.genres) {
+      const genre = raw.trim();
+      if (!genre) continue;
+
+      const key = normalizeSearch(genre);
+      const group = groups.get(key) ?? { variants: new Map<string, number>(), count: 0 };
+
+      group.variants.set(genre, (group.variants.get(genre) ?? 0) + 1);
+      if (!counted.has(key)) {
+        counted.add(key);
+        group.count += 1;
+      }
+
+      groups.set(key, group);
+    }
+  }
+
+  return [...groups.values()]
+    .map(({ variants, count }) => ({ genre: preferredSpelling(variants), count }))
+    .sort((a, b) => a.genre.localeCompare(b.genre, "es"));
+}
+
 /** Every stream year present in the catalog, newest first — drives the year filter. */
 export function collectStreamYears(items: MediaItem[]): number[] {
   const years = new Set<number>();
@@ -96,6 +199,9 @@ export function filterAndSortMedia(
   { type, search, genre, sort, year, month, from, to }: FilterParams
 ): MediaItem[] {
   const query = normalizeSearch(search.trim());
+  // Compared normalized, so `?genre=Fantasia` and `?genre=Fantasía` are one
+  // filter — see the note on collectGenres.
+  const genreKey = genre !== "all" ? normalizeSearch(genre.trim()) : "";
   const yearNum = year !== "all" && /^\d{4}$/.test(year) ? Number(year) : undefined;
   const monthNum = month !== "all" && /^\d{1,2}$/.test(month) ? Number(month) : undefined;
   const hasRange = Boolean(from || to);
@@ -105,8 +211,10 @@ export function filterAndSortMedia(
 
   const filtered = items.filter((item) => {
     if (type !== "all" && item.type !== type) return false;
-    if (genre !== "all" && !item.genres.includes(genre)) return false;
-    if (query && !normalizeSearch(item.title).includes(query)) return false;
+    if (genreKey && !item.genres.some((value) => normalizeSearch(value.trim()) === genreKey)) {
+      return false;
+    }
+    if (query && !matchesSearch(item, query)) return false;
 
     // A custom range replaces the year/month quick filters rather than
     // stacking with them, so the two can never contradict each other.

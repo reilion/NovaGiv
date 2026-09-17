@@ -32,20 +32,6 @@ export const MONTHS: { value: string; label: string }[] = [
   { value: "12", label: "Diciembre" },
 ];
 
-export const GENRES = [
-  "Acción",
-  "Aventura",
-  "Comedia",
-  "Drama",
-  "Fantasía",
-  "Terror",
-  "Romance",
-  "Ciencia ficción",
-  "Slice of Life",
-  "Musical",
-  "Suspenso",
-] as const;
-
 /**
  * How many ok.ru channels /admin/import syncs in one run. ok.ru serves the
  * profile's channel grid 20 at a time and only a real browser can ask for the

@@ -1,9 +1,11 @@
 import Image from "next/image";
 import Link from "next/link";
-import { CalendarDays, Clock, Eye, Heart, Layers, Play } from "lucide-react";
+import { CalendarDays, Clock, Eye, Heart, Layers, Play, Search } from "lucide-react";
 
 import { AspectRatio } from "@/components/ui/aspect-ratio";
 import { Badge } from "@/components/ui/badge";
+import { episodeParam } from "@/lib/episode-param";
+import { matchingEpisodes } from "@/lib/media-filter";
 import { formatStreamRange } from "@/lib/stream-date";
 import { formatLikesLabel, formatViews, formatViewsLabel } from "@/lib/text";
 import {
@@ -16,6 +18,8 @@ import {
 
 interface MediaCardProps {
   item: MediaItem;
+  /** The active search, so the card can point at the episode that matched it. */
+  search?: string;
 }
 
 /**
@@ -27,10 +31,15 @@ interface MediaCardProps {
  * drawn as a dialog over the catalog (app/@modal), so the URL is shareable
  * while the catalog underneath keeps its filters and scroll position.
  */
-export function MediaCard({ item }: MediaCardProps) {
+export function MediaCard({ item, search }: MediaCardProps) {
   const episodic = isEpisodic(item.type);
   const episodeCount = item.episodes?.length ?? 0;
-  const href = `/v/${item.slug}`;
+
+  // A collection can be here because one of its streams matched, not its title.
+  // Saying which, and opening straight at it, is the difference between finding
+  // the night you were looking for and landing on a list of two hundred.
+  const matches = search ? matchingEpisodes(item, search) : [];
+  const href = matches[0] ? `/v/${item.slug}?ep=${episodeParam(matches[0])}` : `/v/${item.slug}`;
   const streamRange = formatStreamRange(item.firstStreamedAt, item.lastStreamedAt);
   // Every video of the collection added up, so a series shows what it drew as a
   // whole and not just what its first episode did.
@@ -124,6 +133,16 @@ export function MediaCard({ item }: MediaCardProps) {
           <div className="flex items-center gap-1 text-xs text-muted-foreground">
             <CalendarDays className="size-3 shrink-0" />
             <span className="truncate">{streamRange}</span>
+          </div>
+        )}
+        {matches.length > 0 && (
+          <div className="flex items-center gap-1 text-xs text-primary">
+            <Search className="size-3 shrink-0" />
+            <span className="truncate">
+              {matches.length === 1
+                ? "1 episodio coincide"
+                : `${matches.length} episodios coinciden`}
+            </span>
           </div>
         )}
       </div>

@@ -159,6 +159,26 @@ de romper la ruta entera. [sitemap.xml](app/sitemap.ts) lista los títulos publi
 con la clave anónima, así que RLS deja fuera los borradores— y [robots.txt](app/robots.ts)
 mantiene a los buscadores fuera de `/admin`, `/account` y los formularios de sesión.
 
+### Búsqueda y filtros
+
+El catálogo se filtra en el servidor a partir de la URL ([lib/media-filter.ts](lib/media-filter.ts)).
+Dos de esas listas **no están escritas a mano**, se derivan de los datos: los años de stream
+y los géneros, cada uno con el número de colecciones que lo llevan. El formulario de /admin
+acepta géneros como texto libre, así que una lista fija ofrecería géneros vacíos y nunca
+mostraría uno nuevo.
+
+Como ese texto es libre, en el catálogo conviven grafías del mismo género que solo difieren
+en tildes o mayúsculas. Se agrupan en una sola opción, y gana la que conserva los acentos
+(«Fantasía» sobre «Fantasia») por ser la correcta; el filtro compara igual, de modo que
+`?genre=Fantasia` y `?genre=Fantasía` devuelven lo mismo y los enlaces viejos siguen valiendo.
+
+La búsqueda no mira solo el título de la colección: también su descripción y **los episodios**
+—su título y su fecha de stream, para que valga tanto «30 junio» como «2026-06-30»—. En un
+catálogo cuyo contenido real son streams sueltos, eso es lo que lo hace encontrable: la
+colección se llama «H1NMTSR», pero lo que alguien recuerda es la noche que vio. Cuando lo que
+coincide son episodios, la tarjeta lo dice («3 episodios coinciden») y su enlace abre
+directamente en el primero, con el `?ep=` correspondiente.
+
 ### Modelo de datos
 
 ```
@@ -228,23 +248,21 @@ La base es sólida; lo que sigue son huecos concretos, ordenados por impacto.
 
 ### Fricciones detectadas
 
-> **Resueltos.** Los dos primeros hallazgos —que no hubiera página por título ni el episodio
-> en la URL— ya están implementados; ver «Enlaces compartidos e indexación» más arriba. Se
-> añadieron `/v/[slug]`, la ruta que la intercepta como modal, `?ep=`, la imagen OG por
-> título, `sitemap.ts`, `robots.ts`, `error.tsx` y `not-found.tsx`. De paso se corrigió que
-> el foco inicial del modal cayera dentro del iframe de ok.ru, que dejaba el diálogo sin
-> poder cerrarse con Escape.
-
-**La búsqueda solo mira el título de la colección**
-([media-filter.ts:109](lib/media-filter.ts#L109)). En un catálogo cuyo contenido real son
-streams sueltos con la fecha en el título, buscar el nombre de un episodio no devuelve nada.
-Debería alcanzar también episodios y descripción, indicando en la tarjeta "3 episodios
-coinciden" y abriendo directamente en ese episodio.
-
-**Los géneros están escritos a mano** en [constants.ts:35](lib/constants.ts#L35): el
-desplegable ofrece géneros sin un solo título detrás, y uno nuevo escrito en el panel no
-aparece nunca. El patrón correcto ya existe en `collectStreamYears` — derivarlos de los datos
-y mostrar el conteo al lado.
+> **Ya resueltos.** Cuatro de los hallazgos de abajo están implementados:
+>
+> - **Página por título y episodio en la URL** — `/v/[slug]`, la ruta que la intercepta como
+>   modal, `?ep=`, la imagen OG por título, `sitemap.ts`, `robots.ts`, `error.tsx` y
+>   `not-found.tsx`. Ver «Enlaces compartidos e indexación». De paso se corrigió que el foco
+>   inicial del modal cayera dentro del iframe de ok.ru, lo que dejaba el diálogo sin poder
+>   cerrarse con Escape.
+> - **Búsqueda sobre episodios y descripción, y géneros derivados** con su conteo. Ver
+>   «Búsqueda y filtros».
+>
+> Derivar los géneros sacó a la luz un problema de datos que la lista fija ocultaba: hay
+> duplicados en el catálogo. El código agrupa los que solo difieren en tildes o mayúsculas
+> («Fantasia»/«Fantasía»), pero quedan pares que son dos nombres distintos para lo mismo y
+> solo se arreglan editando los títulos en /admin: «Sobrenatural» (14) y «Supernatural» (7),
+> «Recuerdos de vida» (11) y «Recuentos de la vida» (1), «Suspenso» (5) y «Thriller» (1).
 
 **La barra de filtros ocupa media pantalla en móvil.** Pestañas, búsqueda, dos desplegables y
 la fila de fechas, todo *sticky* ([filter-bar.tsx:69](components/filters/filter-bar.tsx#L69)).

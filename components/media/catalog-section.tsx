@@ -28,8 +28,9 @@ export async function CatalogSection({ searchParams }: CatalogSectionProps) {
   return shouldGroupByYear(filters) ? (
     <MediaGridByYear
       groups={groupByStreamYear(filteredItems, filters.sort === "streamed-asc")}
+      search={filters.search}
     />
   ) : (
-    <MediaGrid items={filteredItems} />
+    <MediaGrid items={filteredItems} search={filters.search} />
   );
 }

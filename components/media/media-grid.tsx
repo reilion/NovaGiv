@@ -10,12 +10,14 @@ interface MediaGridProps {
   search?: string;
   /** Collections this account has already opened; empty for a visitor. */
   watchedIds?: Set<string>;
+  /** Collections added since this browser's previous visit. */
+  newIds?: Set<string>;
 }
 
 const GRID_CLASS =
   "grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6";
 
-export function MediaGrid({ items, search, watchedIds }: MediaGridProps) {
+export function MediaGrid({ items, search, watchedIds, newIds }: MediaGridProps) {
   if (items.length === 0) return <EmptyState />;
 
   return (
@@ -26,6 +28,7 @@ export function MediaGrid({ items, search, watchedIds }: MediaGridProps) {
           item={item}
           search={search}
           watched={watchedIds?.has(item.id)}
+          isNew={newIds?.has(item.id)}
         />
       ))}
     </div>
@@ -37,10 +40,12 @@ export function MediaGridByYear({
   groups,
   search,
   watchedIds,
+  newIds,
 }: {
   groups: YearGroup[];
   search?: string;
   watchedIds?: Set<string>;
+  newIds?: Set<string>;
 }) {
   if (groups.length === 0) return <EmptyState />;
 
@@ -60,11 +65,12 @@ export function MediaGridByYear({
           <div className={GRID_CLASS}>
             {group.items.map((item) => (
               <MediaCard
-          key={item.id}
-          item={item}
-          search={search}
-          watched={watchedIds?.has(item.id)}
-        />
+                key={item.id}
+                item={item}
+                search={search}
+                watched={watchedIds?.has(item.id)}
+                isNew={newIds?.has(item.id)}
+              />
             ))}
           </div>
         </section>

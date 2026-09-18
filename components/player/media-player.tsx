@@ -1,6 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState, type MouseEvent, type ReactNode } from "react";
+import {
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useState,
+  type MouseEvent,
+  type ReactNode,
+} from "react";
 import Image from "next/image";
 import {
   CalendarDays,
@@ -13,6 +20,7 @@ import {
 } from "lucide-react";
 
 import { LikeButton } from "@/components/player/like-button";
+import { WatchLaterButton } from "@/components/player/watch-later-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -70,6 +78,57 @@ function useRegisterView(mediaItemId: string, videoId: string | undefined, episo
   }, [mediaItemId, videoId, episodic]);
 }
 
+/**
+ * Where an arrow key already means something: moving the caret in the episode
+ * search, or picking an option in the size menu. Those keep it.
+ */
+const ARROW_KEY_OWNERS =
+  'input, textarea, select, [contenteditable], [role="menu"], [role="listbox"], [role="radiogroup"], [role="slider"], [role="tablist"]';
+
+/**
+ * ←/→ step to the previous and next episode, the same as the buttons beside the
+ * title.
+ *
+ * Listens on the window, not on the player, so it works wherever focus sits in
+ * the dialog — except inside the ok.ru frame, whose keys belong to a
+ * cross-origin document that never passes them on. There, the arrows seek the
+ * video, which is what they should do anyway.
+ *
+ * In the capture phase, because the dialog's popup stops arrow keys from
+ * bubbling past it (Base UI keeps them away from composite widgets outside the
+ * dialog), so a bubbling listener up here would never hear one. That is also
+ * why the checks below look at where the key was pressed rather than at
+ * `defaultPrevented`: nothing inside has had its turn yet.
+ */
+function useEpisodeArrowKeys(
+  previous: Episode | undefined,
+  next: Episode | undefined,
+  goTo: (episode: Episode) => void
+) {
+  const onKeyDown = useEffectEvent((event: KeyboardEvent) => {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    // Alt+← is the browser's back, and the rest are text selection or
+    // switching desktops: none of them is ours.
+    if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    // Holding the key down would otherwise race through the list, loading a
+    // frame and counting a view for every episode it passes.
+    if (event.repeat) return;
+    if (event.target instanceof Element && event.target.closest(ARROW_KEY_OWNERS)) return;
+
+    const target = event.key === "ArrowLeft" ? previous : next;
+    if (!target) return;
+
+    event.preventDefault();
+    goTo(target);
+  });
+
+  useEffect(() => {
+    const listener = (event: KeyboardEvent) => onKeyDown(event);
+    window.addEventListener("keydown", listener, true);
+    return () => window.removeEventListener("keydown", listener, true);
+  }, []);
+}
+
 interface MediaPlayerProps {
   item: MediaItem;
   /**
@@ -77,6 +136,8 @@ interface MediaPlayerProps {
    * session, which is what makes the like button a link to the login form.
    */
   likedVideoIds: string[] | null;
+  /** Videos of this collection on the viewer's "Ver después" list. `null` means no session. */
+  savedVideoIds: string[] | null;
   /** Whatever `?ep=` resolved to on the server; the first episode when absent. */
   initialEpisodeId?: string;
   /**
@@ -98,6 +159,7 @@ interface MediaPlayerProps {
 export function MediaPlayer({
   item,
   likedVideoIds,
+  savedVideoIds,
   initialEpisodeId,
   variant,
   headerActions,
@@ -169,6 +231,7 @@ export function MediaPlayer({
   // episodic title carries one per episode — the same keying as the counters.
   const playingLikes = (episodic ? activeEpisode?.likes : item.likes) ?? 0;
   const playingLiked = playingVideoId ? (likedVideoIds ?? []).includes(playingVideoId) : false;
+  const playingSaved = playingVideoId ? (savedVideoIds ?? []).includes(playingVideoId) : false;
 
   function goToEpisode(episode: Episode) {
     setActive({ id: episode.id, autoplay: true });
@@ -190,6 +253,8 @@ export function MediaPlayer({
     event.preventDefault();
     goToEpisode(episode);
   }
+
+  useEpisodeArrowKeys(previousEpisode, nextEpisode, goToEpisode);
 
   const Heading = variant === "page" ? "h1" : "h2";
 
@@ -243,9 +308,10 @@ export function MediaPlayer({
                   disabled={!previousEpisode}
                   onClick={() => previousEpisode && goToEpisode(previousEpisode)}
                   aria-label="Episodio anterior"
+                  aria-keyshortcuts="ArrowLeft"
                   title={
                     previousEpisode
-                      ? `Anterior: ${previousEpisode.title}`
+                      ? `Anterior: ${previousEpisode.title} (←)`
                       : "Este es el primer episodio"
                   }
                 >
@@ -258,8 +324,11 @@ export function MediaPlayer({
                   disabled={!nextEpisode}
                   onClick={() => nextEpisode && goToEpisode(nextEpisode)}
                   aria-label="Episodio siguiente"
+                  aria-keyshortcuts="ArrowRight"
                   title={
-                    nextEpisode ? `Siguiente: ${nextEpisode.title}` : "Este es el último episodio"
+                    nextEpisode
+                      ? `Siguiente: ${nextEpisode.title} (→)`
+                      : "Este es el último episodio"
                   }
                 >
                   <ChevronRight className="size-4" />
@@ -268,16 +337,25 @@ export function MediaPlayer({
             )}
 
             {playingVideoId && (
-              // Keyed by video: a new episode gets a button that starts from
-              // that episode's own like, not the previous one's.
-              <LikeButton
-                key={playingVideoId}
-                mediaItemId={item.id}
-                episodeId={episodic ? playingVideoId : undefined}
-                likes={playingLikes}
-                liked={playingLiked}
-                canLike={likedVideoIds !== null}
-              />
+              // Keyed by video: a new episode gets buttons that start from
+              // that episode's own state, not the previous one's.
+              <>
+                <LikeButton
+                  key={`like:${playingVideoId}`}
+                  mediaItemId={item.id}
+                  episodeId={episodic ? playingVideoId : undefined}
+                  likes={playingLikes}
+                  liked={playingLiked}
+                  canLike={likedVideoIds !== null}
+                />
+                <WatchLaterButton
+                  key={`later:${playingVideoId}`}
+                  mediaItemId={item.id}
+                  episodeId={episodic ? playingVideoId : undefined}
+                  saved={playingSaved}
+                  canSave={savedVideoIds !== null}
+                />
+              </>
             )}
             {headerActions}
           </div>

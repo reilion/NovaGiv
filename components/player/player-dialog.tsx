@@ -67,6 +67,7 @@ function readStoredSize(): PlayerSize {
 interface PlayerDialogProps {
   item: MediaItem;
   likedVideoIds: string[] | null;
+  savedVideoIds: string[] | null;
   initialEpisodeId?: string;
 }
 
@@ -80,7 +81,12 @@ interface PlayerDialogProps {
  * Opening the same URL cold (a shared link, a reload) skips this entirely and
  * renders app/v/[slug]/page.tsx as a full page.
  */
-export function PlayerDialog({ item, likedVideoIds, initialEpisodeId }: PlayerDialogProps) {
+export function PlayerDialog({
+  item,
+  likedVideoIds,
+  savedVideoIds,
+  initialEpisodeId,
+}: PlayerDialogProps) {
   const router = useRouter();
   const [size, setSize] = useState<PlayerSize>(readStoredSize);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -117,6 +123,7 @@ export function PlayerDialog({ item, likedVideoIds, initialEpisodeId }: PlayerDi
           <MediaPlayer
             item={item}
             likedVideoIds={likedVideoIds}
+            savedVideoIds={savedVideoIds}
             initialEpisodeId={initialEpisodeId}
             variant="modal"
             videoClassName={sizePreset.video}

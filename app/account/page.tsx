@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ArrowLeft, Clock, Heart, LogOut, ShieldCheck } from "lucide-react";
+import { ArrowLeft, Bookmark, Clock, Heart, LogOut, ShieldCheck } from "lucide-react";
 
 import { EmailForm } from "@/components/account/email-form";
 import { PasswordForm } from "@/components/account/password-form";
@@ -77,7 +77,7 @@ export default async function AccountPage() {
         </div>
       </header>
 
-      <div className="mt-6 grid grid-cols-2 gap-3">
+      <div className="mt-6 grid gap-3 sm:grid-cols-3">
         <Link
           href="/me-gusta"
           className={cn(
@@ -88,7 +88,20 @@ export default async function AccountPage() {
           <Heart className="size-5 text-primary" />
           <span className="flex flex-col items-start">
             <span className="text-sm font-medium">Mis me gusta</span>
-            <span className="text-xs font-normal text-muted-foreground">Lo que guardaste</span>
+            <span className="text-xs font-normal text-muted-foreground">Lo que te gustó</span>
+          </span>
+        </Link>
+        <Link
+          href="/ver-despues"
+          className={cn(
+            buttonVariants({ variant: "outline" }),
+            "h-auto justify-start gap-3 px-4 py-3"
+          )}
+        >
+          <Bookmark className="size-5 text-primary" />
+          <span className="flex flex-col items-start">
+            <span className="text-sm font-medium">Ver después</span>
+            <span className="text-xs font-normal text-muted-foreground">Lo que tienes pendiente</span>
           </span>
         </Link>
         <Link

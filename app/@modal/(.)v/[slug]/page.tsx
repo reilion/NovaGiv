@@ -17,12 +17,13 @@ interface MediaModalProps {
  */
 export default async function MediaModal({ params, searchParams }: MediaModalProps) {
   const [{ slug }, { ep }] = await Promise.all([params, searchParams]);
-  const { item, likedVideoIds, initialEpisodeId } = await loadMediaView(slug, ep);
+  const { item, likedVideoIds, savedVideoIds, initialEpisodeId } = await loadMediaView(slug, ep);
 
   return (
     <PlayerDialog
       item={item}
       likedVideoIds={likedVideoIds}
+      savedVideoIds={savedVideoIds}
       initialEpisodeId={initialEpisodeId}
     />
   );

@@ -221,12 +221,12 @@ export async function getSitemapEntries(): Promise<SitemapEntry[]> {
   }));
 }
 
-/** One video of the catalog, as "Mis me gusta" and the history list show it. */
+/** One video of the catalog, as "Mis me gusta", "Ver después" and the history list show it. */
 export interface VideoEntry {
   item: MediaItem;
   /** Absent for a collection's own video: a movie, karaoke or especial. */
   episode?: Episode;
-  /** When it was liked, or last opened. ISO timestamp. */
+  /** When it was liked, saved, or last opened. ISO timestamp. */
   at: string;
 }
 
@@ -297,6 +297,49 @@ export const getLikedVideos = cache(async function getLikedVideos(): Promise<Vid
 });
 
 /**
+ * The account's "Ver después" list, most recently saved first. `null` means
+ * there is no session, which is what sends /ver-despues to the login form.
+ *
+ * Fails soft for the same reason as the history below: until
+ * `supabase/schema.sql` is re-run, `watch_later` does not exist.
+ */
+export const getWatchLaterVideos = cache(async function getWatchLaterVideos(): Promise<
+  VideoEntry[] | null
+> {
+  if (!isSupabaseConfigured) return null;
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return null;
+
+  const { data, error } = await supabase
+    .from("watch_later")
+    .select("media_item_id, episode_ref, created_at")
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("getWatchLaterVideos error —", error.message);
+    return [];
+  }
+
+  return resolveVideoEntries(data ?? [], (row) => ({
+    mediaItemId: row.media_item_id as string,
+    at: row.created_at as string,
+    episodeOf: (item) => {
+      const ref = row.episode_ref as string | null;
+      if (!ref) return undefined;
+      // Unlike the history, a saved episode that no longer resolves drops out:
+      // the row named one video, and playing another in its place would be a
+      // different thing from what was saved.
+      return findEpisodeByParam(item.episodes ?? [], ref) ?? null;
+    },
+  }));
+});
+
+/**
  * What the account has been watching, most recent first — one entry per
  * collection, pointing at the episode to resume from.
  *
@@ -360,17 +403,28 @@ export async function getMediaItemById(id: string): Promise<MediaItem | null> {
   return mapMediaItem(data as MediaItemRow);
 }
 
+/** Where the person browsing stands on the videos of one collection. */
+export interface ViewerVideoIds {
+  /** Videos they have liked. */
+  liked: string[];
+  /** Videos on their "Ver después" list. */
+  saved: string[];
+}
+
 /**
- * Which videos of one collection the person browsing has already liked, as the
- * ids the player keys on: the episode's for an episodic collection, the
- * collection's own for a movie, karaoke or especial.
+ * Which videos of one collection the person browsing has liked or saved for
+ * later, as the ids the player keys on: the episode's for an episodic
+ * collection, the collection's own for a movie, karaoke or especial.
  *
  * `null` means nobody is signed in — the difference between "liked nothing" and
- * "cannot like yet", which is what turns the button into a link to the login
- * form. Scoped to the open collection because that is the only one whose like
- * button is on screen; the totals the cards show come off the catalog rows.
+ * "cannot like yet", which is what turns both buttons into links to the login
+ * form. Scoped to the open collection because that is the only one whose
+ * buttons are on screen; the totals the cards show come off the catalog rows.
+ *
+ * One lookup of the session for both lists: `getUser()` is a round trip to the
+ * auth server, not a cookie read.
  */
-export async function getLikedVideoIds(mediaItemId: string): Promise<string[] | null> {
+export async function getViewerVideoIds(item: MediaItem): Promise<ViewerVideoIds | null> {
   if (!isSupabaseConfigured) return null;
 
   const supabase = await createClient();
@@ -380,17 +434,24 @@ export async function getLikedVideoIds(mediaItemId: string): Promise<string[] | 
 
   if (!user) return null;
 
-  const { data, error } = await supabase
-    .from("video_likes")
-    .select("media_item_id, episode_id")
-    .eq("media_item_id", mediaItemId);
+  const [likes, later] = await Promise.all([
+    supabase.from("video_likes").select("media_item_id, episode_id").eq("media_item_id", item.id),
+    supabase.from("watch_later").select("episode_ref").eq("media_item_id", item.id),
+  ]);
 
-  if (error) {
-    console.error("getLikedVideoIds error —", error.message);
-    return [];
-  }
+  if (likes.error) console.error("getViewerVideoIds likes error —", likes.error.message);
+  if (later.error) console.error("getViewerVideoIds watch later error —", later.error.message);
 
-  return (data ?? []).map((row) => row.episode_id ?? row.media_item_id);
+  return {
+    liked: (likes.data ?? []).map((row) => row.episode_id ?? row.media_item_id),
+    // Saved rows name an episode by its ref; the player wants the id it has now.
+    saved: (later.data ?? []).flatMap((row) => {
+      const ref = row.episode_ref as string | null;
+      if (!ref) return [item.id];
+      const episode = findEpisodeByParam(item.episodes ?? [], ref);
+      return episode ? [episode.id] : [];
+    }),
+  };
 }
 
 /** Streamer profile/socials. Swap for a `streamer_profile` table when one exists. */

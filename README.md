@@ -60,10 +60,10 @@ Ejecuta [supabase/schema.sql](supabase/schema.sql) completo en el editor SQL de 
 idempotente: crea tablas, índices, políticas RLS, triggers y funciones, y también sirve de
 migración sobre una versión anterior del mismo archivo.
 
-> **Vuelve a ejecutarlo tras actualizar.** La última versión añade `watch_history` y amplía
-> `register_video_view()`. Hasta que lo hagas, el historial y «Seguir viendo» se quedan
-> vacíos —están escritos para no romper la página si la tabla falta—, pero no registrarán
-> nada.
+> **Vuelve a ejecutarlo tras actualizar.** La última versión añade `watch_later`,
+> `toggle_watch_later()` y el helper `episode_ref_of()`, que ahora usa también
+> `register_video_view()`. Hasta que lo hagas, «Ver después» se queda vacío y su botón
+> responde con un error —la página no se rompe si la tabla falta—.
 
 ### 4. Crear el administrador
 
@@ -128,7 +128,8 @@ los videos nuevos.
 | `/v/[slug]` | Un título: reproductor, ficha y lista de episodios. `?ep=12` (o `?ep=2x12`) abre un episodio concreto |
 | `/login`, `/register` | Se entra con **nombre de usuario**, no con correo |
 | `/account` | Cambiar usuario, correo y contraseña |
-| `/me-gusta` | Los videos que la cuenta guardó, cada uno enlazando a su episodio |
+| `/me-gusta` | Los videos que le gustaron a la cuenta, cada uno enlazando a su episodio |
+| `/ver-despues` | Los videos que la cuenta apartó para más tarde |
 | `/historial` | Una entrada por colección, en el punto donde se dejó |
 | `/auth/confirm` | Aterrizaje de los enlaces que Supabase envía por correo |
 | `/admin` | Tabla del catálogo (incluye borradores) |
@@ -152,6 +153,14 @@ reescribe la URL con `replaceState` en lugar de navegar: el video ya está en la
 apilar historial obligaría a recorrer episodio por episodio al cerrar. Un `?ep=` que no
 resuelve reproduce el primero en vez de fallar.
 
+En una colección episódica, **← y →** cambian al episodio anterior y al siguiente, igual que
+los botones junto al título. El listener va en fase de captura sobre `window`: el popup del
+diálogo de Base UI corta la propagación de las flechas para que no lleguen a widgets de fuera,
+así que en fase de burbuja nunca se oirían. Se ignoran con modificadores (Alt+← es «atrás»),
+con la tecla mantenida (cada paso carga un iframe y cuenta una vista) y cuando el foco está en
+el buscador de episodios o en el menú de tamaño. Con el foco dentro del iframe de ok.ru las
+flechas son suyas y adelantan el video: un documento de otro origen no nos pasa sus teclas.
+
 Los enlaces antiguos `?play=<slug>` se redirigen a `/v/<slug>`, porque están compartidos
 por ahí.
 
@@ -164,7 +173,8 @@ tipo, rango de fechas y vistas, renderizados a PNG. El póster se descarga y se 
 data URL, de modo que un CDN que rechace la petición degrada a una tarjeta sin imagen en vez
 de romper la ruta entera. [sitemap.xml](app/sitemap.ts) lista los títulos publicados —los lee
 con la clave anónima, así que RLS deja fuera los borradores— y [robots.txt](app/robots.ts)
-mantiene a los buscadores fuera de `/admin`, `/account` y los formularios de sesión.
+mantiene a los buscadores fuera de `/admin`, `/account`, las listas personales y los
+formularios de sesión.
 
 ### Búsqueda y filtros
 
@@ -196,22 +206,50 @@ directamente en el primero, con el `?ep=` correspondiente.
 
 ### Lo que recuerda una cuenta
 
-Dos listas, las dos derivadas de filas que ya se escribían solas:
+Tres listas:
 
 - **Mis me gusta** (`/me-gusta`) sale de `video_likes`, con una fila por video.
+- **Ver después** (`/ver-despues`) sale de `watch_later`, con la misma forma: una fila por
+  persona y video, la colección más el episodio si lo hay. Se alterna desde el botón junto al
+  me gusta del reproductor con `toggle_watch_later()`, y se vacía desde la propia lista. No
+  lleva contador: cuánta gente guardó un video no le importa a nadie más.
 - **Historial** y la estantería «Seguir viendo» del catálogo salen de `watch_history`, con
   una fila por colección: dónde retomarla y cuándo se abrió por última vez. La escribe
   `register_video_view()`, el mismo paso que ya contaba la reproducción, así que no hay una
   segunda ida y vuelta ni forma de falsear el historial desde el navegador — la tabla no tiene
   política de inserción.
 
-El punto de retomada se guarda como el mismo `?ep=` que viaja en la URL («12», «2x12») y no
-como el id del episodio, por lo de siempre: guardar una colección en /admin reinserta todos
-sus episodios y un id quedaría colgando.
+El historial y «Ver después» guardan el episodio como el mismo `?ep=` que viaja en la URL
+(«12», «2x12») y no como su id, por lo de siempre: guardar una colección en /admin reinserta
+todos sus episodios y un id quedaría colgando. Es la única diferencia de forma entre
+`watch_later` y `video_likes`, y es a propósito: ver «Dos cosas que conviene saber». Ninguna
+de las dos tablas tiene política de inserción, así que toda referencia guardada la produjo
+`episode_ref_of()` a partir de un episodio real, y siempre con la forma de `episodeParam()`.
 
-Las dos listas se resuelven contra el catálogo ya cargado en memoria en vez de con un join,
+Las listas se resuelven contra el catálogo ya cargado en memoria en vez de con un join,
 de modo que un título despublicado desde entonces desaparece de la lista en lugar de
 renderizarse como una fila muerta.
+
+### «Nuevo» desde la última visita
+
+Las tarjetas añadidas (`created_at`) desde la visita anterior llevan un badge «Nuevo» en la
+esquina donde va «Visto»; si la colección ya se abrió, gana «Visto», porque para quien la vio
+ya no es novedad. La referencia vive en una cookie propia, `novagiv_visit`, que
+[proxy.ts](proxy.ts) actualiza en cada petición ([lib/last-visit.ts](lib/last-visit.ts)) y no
+en `profiles`: la mayoría de quienes visitan el catálogo no tienen cuenta, y son justo a
+quienes hay que darles un motivo para volver. A cambio, es por navegador y no por cuenta.
+
+- Una visita termina tras **30 minutos** sin peticiones; la siguiente toma como referencia el
+  final de la anterior, y la mantiene durante toda la visita, así que los badges no
+  desaparecen al primer clic.
+- En la primera visita no hay referencia y nada se marca: una tarjeta no puede ser nueva para
+  quien nunca ha visto el catálogo.
+- La cookie se reescribe como mucho una vez por minuto, y en la request (no solo en la
+  respuesta), para que la misma petición que abre la visita ya se renderice con la nueva
+  referencia.
+
+Solo mira colecciones: un episodio nuevo en una serie en emisión no la marca, porque
+`episodes` no tiene `created_at`.
 
 ### Modelo de datos
 
@@ -220,6 +258,9 @@ media_items ──< episodes
       │             │
       └──────┬──────┘
           video_likes  (user_id + (episode_id | media_item_id))
+
+media_items ──< watch_later    (user_id + media_item_id + episode_ref?)
+media_items ──< watch_history  (user_id + media_item_id → episode_ref)
 
 profiles (1:1 con auth.users)      okru_channels (catálogo para el importador)
 ```
@@ -322,7 +363,7 @@ del reproductor solo pinta un icono.
 
 ### Funcionalidades propuestas
 
-Aprovechando que ya existen cuentas y `video_likes`. Las cinco primeras ya están
+Aprovechando que ya existen cuentas y `video_likes`. Las ocho primeras ya están
 implementadas:
 
 | Idea | Por qué encaja | Esfuerzo |
@@ -332,9 +373,9 @@ implementadas:
 | ~~Siguiente/anterior episodio y autoplay~~ **hecho** | Hoy hay que volver a la lista para cada stream | Bajo |
 | ~~Buscador dentro de la lista de episodios~~ **hecho** | Un canal de 200 streams da una lista interminable dentro del modal | Bajo |
 | ~~"Seguir viendo" / historial~~ **hecho** | Las vistas ya se marcan en `sessionStorage`; guardarlas por cuenta da historial y marca de "visto" en la tarjeta | Bajo |
-| Badge "Nuevo" | Con `created_at` contra la última visita; da motivo para volver | Bajo |
-| Atajos de teclado (←/→) | El modal ya cierra con Esc; falta navegar episodios | Bajo |
-| Lista "ver después" | Complementa los me gusta, misma forma de tabla | Medio |
+| ~~Badge "Nuevo"~~ **hecho** | Con `created_at` contra la última visita; da motivo para volver | Bajo |
+| ~~Atajos de teclado (←/→)~~ **hecho** | El modal ya cierra con Esc; falta navegar episodios | Bajo |
+| ~~Lista "ver después"~~ **hecho** | Complementa los me gusta, misma forma de tabla | Medio |
 | Comentarios por video | Misma clave que los me gusta; es lo que convierte el catálogo en comunidad. Exige plan de moderación | Medio |
 | Estado en vivo real | `isLive` hoy es un mock estático ([mock-data.ts:15](lib/mock-data.ts#L15)); la API Helix de Twitch con `revalidate: 60` lo haría real | Medio |
 | Colecciones curadas | "Maratón de terror", "Karaokes 2025": una portada editorial en vez de solo grilla cronológica | Medio |
@@ -358,8 +399,9 @@ implementadas:
 en /admin borra y reinserta todos sus episodios ([lib/media-write.ts](lib/media-write.ts)):
 los me gusta de esos videos se van con ellos. Las vistas sí se traspasan a mano por URL de
 ok.ru, los me gusta no. Ahora que existe una página que los lista, el agujero se nota. El
-arreglo es cambiar la clave del me gusta a temporada/número, como ya hacen `?ep=` y el
-historial, y traspasarlos en `writeMediaItem` igual que los contadores.
+arreglo es cambiar la clave del me gusta a temporada/número, como ya hacen `?ep=`, el
+historial y «Ver después», y traspasarlos en `writeMediaItem` igual que los contadores.
+`watch_later` se diseñó así desde el principio precisamente para no heredar este agujero.
 
 **El autoplay es solo al cambiar de episodio.** El iframe de ok.ru es de otro origen y no
 avisa de nada, así que no hay forma de saber cuándo termina un video: encadenar al siguiente

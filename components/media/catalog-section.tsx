@@ -1,4 +1,7 @@
+import { cookies } from "next/headers";
+
 import { MediaGrid, MediaGridByYear } from "@/components/media/media-grid";
+import { LAST_VISIT_COOKIE, newSince } from "@/lib/last-visit";
 import {
   filterAndSortMedia,
   groupByStreamYear,
@@ -22,20 +25,41 @@ interface CatalogSectionProps {
  */
 export async function CatalogSection({ searchParams }: CatalogSectionProps) {
   // Both are request-cached, so the shelf above the grid shares this history.
-  const [items, history] = await Promise.all([getMediaItems(), getWatchHistory()]);
+  const [items, history, cookieStore] = await Promise.all([
+    getMediaItems(),
+    getWatchHistory(),
+    cookies(),
+  ]);
   const filters = parseFilterParams(searchParams);
   const filteredItems = filterAndSortMedia(items, filters);
 
   // One row per collection, so this is at most "everything watched once".
   const watchedIds = new Set((history ?? []).map((entry) => entry.item.id));
 
+  // Added since this browser's previous visit — see lib/last-visit.ts. Anything
+  // already opened is left out: it is not news to whoever watched it.
+  const since = newSince(cookieStore.get(LAST_VISIT_COOKIE)?.value);
+  const newIds = new Set(
+    since === null
+      ? []
+      : filteredItems
+          .filter((item) => !watchedIds.has(item.id) && Date.parse(item.createdAt) > since)
+          .map((item) => item.id)
+  );
+
   return shouldGroupByYear(filters) ? (
     <MediaGridByYear
       groups={groupByStreamYear(filteredItems, filters.sort === "streamed-asc")}
       search={filters.search}
       watchedIds={watchedIds}
+      newIds={newIds}
     />
   ) : (
-    <MediaGrid items={filteredItems} search={filters.search} watchedIds={watchedIds} />
+    <MediaGrid
+      items={filteredItems}
+      search={filters.search}
+      watchedIds={watchedIds}
+      newIds={newIds}
+    />
   );
 }

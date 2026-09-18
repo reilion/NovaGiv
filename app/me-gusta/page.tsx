@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ArrowLeft, Clock, Heart } from "lucide-react";
+import { ArrowLeft, Bookmark, Clock, Heart } from "lucide-react";
 
 import { VideoEntryList } from "@/components/media/video-entry-list";
 import { buttonVariants } from "@/components/ui/button";
@@ -38,10 +38,16 @@ export default async function LikedVideosPage() {
           </p>
         </div>
 
-        <Link href="/historial" className={buttonVariants({ variant: "outline", size: "sm" })}>
-          <Clock className="size-4" />
-          Historial
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link href="/ver-despues" className={buttonVariants({ variant: "outline", size: "sm" })}>
+            <Bookmark className="size-4" />
+            Ver después
+          </Link>
+          <Link href="/historial" className={buttonVariants({ variant: "outline", size: "sm" })}>
+            <Clock className="size-4" />
+            Historial
+          </Link>
+        </div>
       </header>
 
       <div className="mt-6">

@@ -66,7 +66,7 @@ export async function generateMetadata({ params }: MediaPageProps): Promise<Meta
  */
 export default async function MediaPage({ params, searchParams }: MediaPageProps) {
   const [{ slug }, { ep }] = await Promise.all([params, searchParams]);
-  const { item, likedVideoIds, initialEpisodeId } = await loadMediaView(slug, ep);
+  const { item, likedVideoIds, savedVideoIds, initialEpisodeId } = await loadMediaView(slug, ep);
 
   return (
     <div className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 sm:px-6 lg:px-8">
@@ -81,6 +81,7 @@ export default async function MediaPage({ params, searchParams }: MediaPageProps
       <MediaPlayer
         item={item}
         likedVideoIds={likedVideoIds}
+        savedVideoIds={savedVideoIds}
         initialEpisodeId={initialEpisodeId}
         variant="page"
       />

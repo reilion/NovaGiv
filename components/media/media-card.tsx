@@ -1,6 +1,16 @@
 import Image from "next/image";
 import Link from "next/link";
-import { CalendarDays, Check, Clock, Eye, Heart, Layers, Play, Search } from "lucide-react";
+import {
+  CalendarDays,
+  Check,
+  Clock,
+  Eye,
+  Heart,
+  Layers,
+  Play,
+  Search,
+  Sparkles,
+} from "lucide-react";
 
 import { AspectRatio } from "@/components/ui/aspect-ratio";
 import { Badge } from "@/components/ui/badge";
@@ -22,6 +32,8 @@ interface MediaCardProps {
   search?: string;
   /** True once this account has opened the collection — see the history shelf. */
   watched?: boolean;
+  /** Added since this browser's previous visit — see lib/last-visit.ts. */
+  isNew?: boolean;
 }
 
 /**
@@ -33,7 +45,7 @@ interface MediaCardProps {
  * drawn as a dialog over the catalog (app/@modal), so the URL is shareable
  * while the catalog underneath keeps its filters and scroll position.
  */
-export function MediaCard({ item, search, watched }: MediaCardProps) {
+export function MediaCard({ item, search, watched, isNew }: MediaCardProps) {
   const episodic = isEpisodic(item.type);
   const episodeCount = item.episodes?.length ?? 0;
 
@@ -69,11 +81,20 @@ export function MediaCard({ item, search, watched }: MediaCardProps) {
           </span>
         </div>
 
-        {watched && (
+        {/* Same corner for both: a title already opened is not news any more,
+            so "Visto" wins (the catalog never marks a watched title new). */}
+        {watched ? (
           <div className="absolute right-2 top-2 flex items-center gap-1 rounded-md bg-black/60 px-1.5 py-0.5 text-[10px] text-foreground backdrop-blur-sm">
             <Check className="size-3" />
             Visto
           </div>
+        ) : (
+          isNew && (
+            <div className="absolute right-2 top-2 flex items-center gap-1 rounded-md bg-primary px-1.5 py-0.5 text-[10px] font-semibold text-primary-foreground shadow-glow">
+              <Sparkles className="size-3" />
+              Nuevo
+            </div>
+          )
         )}
 
         <div className="absolute left-2 top-2 flex flex-wrap gap-1">

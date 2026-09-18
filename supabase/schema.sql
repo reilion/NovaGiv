@@ -375,6 +375,25 @@ create policy "Users delete own history"
   to authenticated
   using (user_id = auth.uid());
 
+-- The "12" / "2x12" an episode goes by in the URL, in the history and in "Ver
+-- después". Mirrors episodeParam() in lib/episode-param.ts, so this is the one
+-- place in SQL to keep in step with it. Null when the episode is not part of
+-- the collection.
+create or replace function public.episode_ref_of(p_media_item_id uuid, p_episode_id uuid)
+returns text
+language sql
+stable
+set search_path = public
+as $$
+  select case
+           when coalesce(e.season_number, 1) > 1
+             then e.season_number::text || 'x' || e.episode_number::text
+           else e.episode_number::text
+         end
+    from episodes e
+   where e.id = p_episode_id and e.media_item_id = p_media_item_id;
+$$;
+
 -- Counting a play is the only write the public site makes, and the policies
 -- above only let an authenticated admin write. This function is the exception:
 -- security definer, so an anonymous visitor can bump exactly one counter by one
@@ -415,16 +434,7 @@ begin
   end if;
 
   if p_episode_id is not null then
-    -- Mirrors episodeParam() in lib/episode-param.ts: "12", or "2x12" once the
-    -- collection has more than one season.
-    select case
-             when coalesce(e.season_number, 1) > 1
-               then coalesce(e.season_number, 1)::text || 'x' || e.episode_number::text
-             else e.episode_number::text
-           end
-      into v_ref
-      from episodes e
-     where e.id = p_episode_id and e.media_item_id = p_media_item_id;
+    v_ref := episode_ref_of(p_media_item_id, p_episode_id);
   end if;
 
   insert into watch_history (user_id, media_item_id, episode_ref, watched_at)
@@ -616,3 +626,113 @@ $$;
 
 revoke all on function toggle_video_like(uuid, uuid) from public;
 grant execute on function toggle_video_like(uuid, uuid) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Watch later
+-- ---------------------------------------------------------------------------
+-- "Ver después": the videos an account set aside to watch. The same shape as a
+-- like — one row per person per video, the collection plus the episode when
+-- there is one — with one deliberate difference: the episode is named by its
+-- "12" / "2x12" ref, as in watch_history, and not by its id. Saving a
+-- collection in /admin deletes and reinserts every episode row (see
+-- lib/media-write.ts), so a row keyed by episode id would be wiped by the next
+-- edit — the known hole in video_likes, and one a list somebody keeps on
+-- purpose cannot afford.
+--
+-- No counter: how many people saved a video is nobody else's business, so
+-- there is nothing to denormalize and no trigger.
+
+create table if not exists watch_later (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  media_item_id uuid not null references media_items (id) on delete cascade,
+  -- Null for a collection with a single video: a movie, karaoke or especial.
+  episode_ref text,
+  created_at timestamptz not null default now()
+);
+
+-- One row per person per video, in two halves for the same reason as the
+-- likes: null episode_ref values do not compare equal to each other.
+create unique index if not exists watch_later_episode_key
+  on watch_later (user_id, media_item_id, episode_ref)
+  where episode_ref is not null;
+
+create unique index if not exists watch_later_item_key
+  on watch_later (user_id, media_item_id)
+  where episode_ref is null;
+
+create index if not exists watch_later_user_created_idx
+  on watch_later (user_id, created_at desc);
+
+alter table watch_later enable row level security;
+
+-- Your own list and nothing else. There is deliberately no insert policy: the
+-- only way in is toggle_watch_later() below, which derives the ref from a real
+-- episode, so every stored ref is one episodeParam() would produce.
+drop policy if exists "Users read own watch later" on watch_later;
+create policy "Users read own watch later"
+  on watch_later for select
+  to authenticated
+  using (user_id = auth.uid());
+
+-- Taking a video off the list from /ver-despues.
+drop policy if exists "Users remove own watch later" on watch_later;
+create policy "Users remove own watch later"
+  on watch_later for delete
+  to authenticated
+  using (user_id = auth.uid());
+
+-- Adds or removes one video in one round trip and answers whether it ended up
+-- on the list. security definer because of the missing insert policy above; it
+-- only ever writes the caller's own row, and only for a published collection.
+create or replace function toggle_watch_later(p_media_item_id uuid, p_episode_id uuid default null)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_user uuid := auth.uid();
+  v_published boolean;
+  v_ref text;
+  v_deleted int;
+begin
+  if v_user is null then
+    raise exception 'Hay que iniciar sesión para guardar videos.' using errcode = '42501';
+  end if;
+
+  select published into v_published from media_items where id = p_media_item_id;
+  if not coalesce(v_published, false) then
+    raise exception 'Ese título no está publicado.' using errcode = '22023';
+  end if;
+
+  if p_episode_id is not null then
+    v_ref := episode_ref_of(p_media_item_id, p_episode_id);
+
+    -- An episode of another collection, or one the admin rewrote away while
+    -- the player sat open.
+    if v_ref is null then
+      raise exception 'Ese episodio ya no está en la colección.' using errcode = '22023';
+    end if;
+  end if;
+
+  delete from watch_later
+   where user_id = v_user
+     and media_item_id = p_media_item_id
+     and episode_ref is not distinct from v_ref;
+
+  get diagnostics v_deleted = row_count;
+
+  if v_deleted > 0 then
+    return false;
+  end if;
+
+  insert into watch_later (user_id, media_item_id, episode_ref)
+  values (v_user, p_media_item_id, v_ref);
+
+  return true;
+end;
+$$;
+
+revoke all on function toggle_watch_later(uuid, uuid) from public;
+grant execute on function toggle_watch_later(uuid, uuid) to authenticated;

@@ -6,22 +6,18 @@ import { PublishToggleButton } from "@/components/admin/publish-toggle-button";
 import { SeedButton } from "@/components/admin/seed-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { getAllMediaItemsForAdmin, isSupabaseConfigured } from "@/lib/queries";
+import { getAllMediaItemsForAdmin } from "@/lib/queries";
 import { isEpisodic, MEDIA_TYPE_LABELS } from "@/types/media";
 
+// There used to be a banner here for "Supabase is not configured, these are
+// demo titles". It cannot happen any more: reaching this page needs an admin
+// account, and without a project nobody has one — the layout above sends them
+// to /login, which is where that explanation lives now.
 export default async function AdminDashboardPage() {
   const items = await getAllMediaItemsForAdmin();
 
   return (
     <div className="flex flex-col gap-6">
-      {!isSupabaseConfigured && (
-        <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          Supabase no está configurado (faltan <code>NEXT_PUBLIC_SUPABASE_URL</code> /{" "}
-          <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code> en <code>.env.local</code>). Estos
-          títulos son datos de ejemplo y no se pueden editar todavía.
-        </div>
-      )}
-
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-foreground">Catálogo</h1>

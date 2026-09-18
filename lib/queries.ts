@@ -4,14 +4,11 @@ import { cache } from "react";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
 import { findEpisodeByParam } from "@/lib/episode-param";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
 import { MOCK_MEDIA, MOCK_STREAMER } from "@/lib/mock-data";
 import type { Episode, MediaItem } from "@/types/media";
 import type { StreamerProfile } from "@/types/streamer";
-
-export const isSupabaseConfigured = Boolean(
-  process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
 
 /**
  * The episode columns a view of a collection needs, spelled out rather than

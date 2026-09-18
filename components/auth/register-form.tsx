@@ -16,7 +16,8 @@ import {
 import { signUp } from "@/lib/actions/auth";
 import { cn } from "@/lib/utils";
 
-export function RegisterForm() {
+/** `warning` mirrors LoginForm's: shown above the fields, before anything is typed. */
+export function RegisterForm({ warning }: { warning?: string }) {
   const [state, formAction, isPending] = useActionState(signUp, undefined);
 
   // Set only when the project requires confirming the address: the account is
@@ -50,6 +51,12 @@ export function RegisterForm() {
         </CardDescription>
       </CardHeader>
       <CardContent>
+        {warning && (
+          <p className="mb-4 rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground">
+            {warning}
+          </p>
+        )}
+
         <form action={formAction} className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
             <label htmlFor="username" className="text-sm font-medium text-foreground">

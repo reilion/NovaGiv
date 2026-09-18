@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
+import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { loginPath, safeRedirectPath } from "@/lib/url";
 
 /** Routes that only make sense while signed out. */
@@ -20,6 +21,11 @@ function hasSessionCookie(request: NextRequest) {
  * just browses the catalog.
  */
 export async function updateSession(request: NextRequest) {
+  // Before anything else: with no project there is no session to refresh and no
+  // role to gate on, and building a client here would throw on every request of
+  // the site rather than on one page of it.
+  if (!isSupabaseConfigured) return NextResponse.next({ request });
+
   const { pathname } = request.nextUrl;
   const isAdminRoute = pathname.startsWith("/admin");
   const isAccountRoute = pathname.startsWith("/account");

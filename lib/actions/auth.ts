@@ -11,6 +11,7 @@ import {
 } from "@/lib/account";
 import { findAccountByUsername, isUsernameTaken } from "@/lib/auth";
 import { getSiteUrl } from "@/lib/site-url";
+import { isSupabaseConfigured, NO_SUPABASE_ERROR } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
 import { safeRedirectPath } from "@/lib/url";
 import type { AccountRole } from "@/types/account";
@@ -39,6 +40,11 @@ export async function signIn(
   _prevState: AuthState | undefined,
   formData: FormData
 ): Promise<AuthState> {
+  // Said plainly, and before the credentials are even looked at: the alternative
+  // is BAD_CREDENTIALS below, which would blame the person for a password that
+  // was never going to be checked against anything.
+  if (!isSupabaseConfigured) return { error: NO_SUPABASE_ERROR };
+
   const username = normalizeUsername(String(formData.get("username") ?? ""));
   const password = String(formData.get("password") ?? "");
   const next = formData.get("next");
@@ -67,6 +73,8 @@ export async function signUp(
   _prevState: AuthState | undefined,
   formData: FormData
 ): Promise<AuthState> {
+  if (!isSupabaseConfigured) return { error: NO_SUPABASE_ERROR };
+
   const username = normalizeUsername(String(formData.get("username") ?? ""));
   const email = String(formData.get("email") ?? "")
     .trim()
@@ -134,6 +142,10 @@ export async function signUp(
 }
 
 export async function signOut() {
+  // Unreachable in practice — with no project the header never draws the form
+  // this submits — but it is a public endpoint, so it answers for itself.
+  if (!isSupabaseConfigured) redirect("/");
+
   const supabase = await createClient();
   await supabase.auth.signOut();
   revalidatePath("/", "layout");

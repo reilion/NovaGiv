@@ -53,6 +53,10 @@ producción),
 
 Sin Supabase configurado el sitio arranca igual y sirve los datos de ejemplo de
 [lib/mock-data.ts](lib/mock-data.ts), así que la UI es navegable desde el primer `pnpm dev`.
+Lo que no hay en ese modo son cuentas: la cabecera muestra el estado de visitante, y
+`/login`, `/register` y todo lo que necesite sesión lo dicen en vez de fallar
+([lib/supabase/config.ts](lib/supabase/config.ts) es la única fuente de esa respuesta, y el
+proxy la consulta antes que nada).
 
 ### 3. Base de datos
 

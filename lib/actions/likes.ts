@@ -1,6 +1,6 @@
 "use server";
 
-import { isSupabaseConfigured } from "@/lib/queries";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
 
 export interface LikeResult {

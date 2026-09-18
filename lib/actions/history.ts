@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
-import { isSupabaseConfigured } from "@/lib/queries";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
 
 /**

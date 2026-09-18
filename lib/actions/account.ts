@@ -10,6 +10,7 @@ import {
 } from "@/lib/account";
 import { getAccount, isUsernameTaken, verifyPassword } from "@/lib/auth";
 import { getSiteUrl } from "@/lib/site-url";
+import { isSupabaseConfigured, NO_SUPABASE_ERROR } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
 
 export interface AccountState {
@@ -19,12 +20,17 @@ export interface AccountState {
 }
 
 const SESSION_GONE = "Tu sesión expiró. Vuelve a iniciar sesión.";
+// Without a project getAccount() answers null for everyone, and SESSION_GONE
+// would read as "you were signed out" to somebody who never could be.
+const NO_ACCOUNTS = NO_SUPABASE_ERROR;
 const WRONG_PASSWORD = "La contraseña actual no es correcta.";
 
 export async function updateUsername(
   _prevState: AccountState | undefined,
   formData: FormData
 ): Promise<AccountState> {
+  if (!isSupabaseConfigured) return { error: NO_ACCOUNTS };
+
   const account = await getAccount();
   if (!account) return { error: SESSION_GONE };
 
@@ -63,6 +69,8 @@ export async function updateEmail(
   _prevState: AccountState | undefined,
   formData: FormData
 ): Promise<AccountState> {
+  if (!isSupabaseConfigured) return { error: NO_ACCOUNTS };
+
   const account = await getAccount();
   if (!account) return { error: SESSION_GONE };
 
@@ -101,6 +109,8 @@ export async function updatePassword(
   _prevState: AccountState | undefined,
   formData: FormData
 ): Promise<AccountState> {
+  if (!isSupabaseConfigured) return { error: NO_ACCOUNTS };
+
   const account = await getAccount();
   if (!account) return { error: SESSION_GONE };
 

@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import type { EmailOtpType } from "@supabase/supabase-js";
 
+import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
 import { safeRedirectPath } from "@/lib/url";
 
@@ -22,6 +23,10 @@ const OTP_TYPES: EmailOtpType[] = [
  * page the link asked for, with the token stripped from the address bar.
  */
 export async function GET(request: NextRequest) {
+  // Nobody can be holding a link this project sent, so whatever is in the URL
+  // is somebody else's or a leftover: send them to the catalog.
+  if (!isSupabaseConfigured) return NextResponse.redirect(new URL("/", request.url));
+
   const { searchParams } = request.nextUrl;
   const next = safeRedirectPath(searchParams.get("next")) ?? "/";
   const tokenHash = searchParams.get("token_hash");

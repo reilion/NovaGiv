@@ -1,7 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import { isSupabaseConfigured } from "@/lib/queries";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
 
 /**
  * Counts one play. Called by the player when a video is shown — ok.ru's iframe

@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
 import { loginPath } from "@/lib/url";
 import type { Account, AccountRole } from "@/types/account";
@@ -14,6 +15,12 @@ function toRole(value: unknown): AccountRole {
 
 /** The signed-in account (auth user + its profile row), or null for a visitor. */
 export async function getAccount(): Promise<Account | null> {
+  // No project, no accounts. Every page has a header, and the header asks this
+  // on every request, so answering "nobody is signed in" is what keeps the demo
+  // catalog browsable instead of throwing inside a client built on two
+  // undefined values.
+  if (!isSupabaseConfigured) return null;
+
   const supabase = await createClient();
   const {
     data: { user },
@@ -45,6 +52,12 @@ export async function getAccount(): Promise<Account | null> {
  * instead of a wall of empty results.
  */
 export async function requireAdminClient() {
+  // Unreachable in practice — with no project nobody can hold a session, so the
+  // layout over /admin has already turned them away — but this is where an
+  // admin action asks, and it should answer like the layout does rather than
+  // build a client on two undefined values.
+  if (!isSupabaseConfigured) redirect(loginPath("/admin"));
+
   const supabase = await createClient();
   const {
     data: { user },
@@ -73,6 +86,8 @@ export async function requireAdminClient() {
 export async function findAccountByUsername(
   username: string
 ): Promise<{ email: string; role: AccountRole } | null> {
+  if (!isSupabaseConfigured) return null;
+
   const { data } = await createAdminClient()
     .from("profiles")
     .select("email, role")
@@ -96,6 +111,9 @@ export async function findAccountByUsername(
  * own.
  */
 export async function verifyPassword(email: string, password: string): Promise<boolean> {
+  // Never confirm a password there is no account behind.
+  if (!isSupabaseConfigured) return false;
+
   const supabase = createSupabaseClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -108,6 +126,8 @@ export async function verifyPassword(email: string, password: string): Promise<b
 }
 
 export async function isUsernameTaken(username: string): Promise<boolean> {
+  if (!isSupabaseConfigured) return false;
+
   const { data } = await createAdminClient()
     .from("profiles")
     .select("id")

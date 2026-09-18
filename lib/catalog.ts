@@ -14,7 +14,8 @@ import {
   type GenreCount,
 } from "@/lib/media-filter";
 import { MOCK_MEDIA } from "@/lib/mock-data";
-import { getWatchedIds, isSupabaseConfigured } from "@/lib/queries";
+import { getWatchedIds } from "@/lib/queries";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
 import {
   totalLikesOf,

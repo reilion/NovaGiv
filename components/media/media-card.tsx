@@ -14,26 +14,17 @@ import {
 
 import { AspectRatio } from "@/components/ui/aspect-ratio";
 import { Badge } from "@/components/ui/badge";
-import { episodeParam } from "@/lib/episode-param";
-import { matchingEpisodes } from "@/lib/media-filter";
 import { formatStreamRange } from "@/lib/stream-date";
 import { formatLikesLabel, formatViews, formatViewsLabel } from "@/lib/text";
-import {
-  isEpisodic,
-  MEDIA_STATUS_LABELS,
-  totalLikesOf,
-  totalViewsOf,
-  type MediaItem,
-} from "@/types/media";
+import { isEpisodic, MEDIA_STATUS_LABELS, type CatalogCard } from "@/types/media";
 
 interface MediaCardProps {
-  item: MediaItem;
-  /** The active search, so the card can point at the episode that matched it. */
-  search?: string;
-  /** True once this account has opened the collection — see the history shelf. */
-  watched?: boolean;
-  /** Added since this browser's previous visit — see lib/last-visit.ts. */
-  isNew?: boolean;
+  /**
+   * One row of the catalog query. Everything the card draws is already on it —
+   * the episode count, the view and like totals, which episodes the search
+   * matched — so nothing here has to reach for a collection's episode list.
+   */
+  item: CatalogCard;
 }
 
 /**
@@ -45,20 +36,17 @@ interface MediaCardProps {
  * drawn as a dialog over the catalog (app/@modal), so the URL is shareable
  * while the catalog underneath keeps its filters and scroll position.
  */
-export function MediaCard({ item, search, watched, isNew }: MediaCardProps) {
+export function MediaCard({ item }: MediaCardProps) {
   const episodic = isEpisodic(item.type);
-  const episodeCount = item.episodes?.length ?? 0;
+  const { episodeCount, matchedEpisodes, views, likes, watched, isNew } = item;
 
   // A collection can be here because one of its streams matched, not its title.
   // Saying which, and opening straight at it, is the difference between finding
   // the night you were looking for and landing on a list of two hundred.
-  const matches = search ? matchingEpisodes(item, search) : [];
-  const href = matches[0] ? `/v/${item.slug}?ep=${episodeParam(matches[0])}` : `/v/${item.slug}`;
+  const href = item.matchedEpisodeRef
+    ? `/v/${item.slug}?ep=${item.matchedEpisodeRef}`
+    : `/v/${item.slug}`;
   const streamRange = formatStreamRange(item.firstStreamedAt, item.lastStreamedAt);
-  // Every video of the collection added up, so a series shows what it drew as a
-  // whole and not just what its first episode did.
-  const views = totalViewsOf(item);
-  const likes = totalLikesOf(item);
 
   return (
     <Link
@@ -165,13 +153,13 @@ export function MediaCard({ item, search, watched, isNew }: MediaCardProps) {
             <span className="truncate">{streamRange}</span>
           </div>
         )}
-        {matches.length > 0 && (
+        {matchedEpisodes > 0 && (
           <div className="flex items-center gap-1 text-xs text-primary">
             <Search className="size-3 shrink-0" />
             <span className="truncate">
-              {matches.length === 1
+              {matchedEpisodes === 1
                 ? "1 episodio coincide"
-                : `${matches.length} episodios coinciden`}
+                : `${matchedEpisodes} episodios coinciden`}
             </span>
           </div>
         )}

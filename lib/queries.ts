@@ -13,6 +13,16 @@ export const isSupabaseConfigured = Boolean(
   process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 );
 
+/**
+ * The episode columns a view of a collection needs, spelled out rather than
+ * `episodes(*)`: the table also carries `search_text`, a normalized copy of the
+ * title and the date that exists so Postgres can search it (see
+ * supabase/schema.sql), and a collection of two hundred streams has no reason
+ * to ship two hundred copies of it to the browser.
+ */
+const EPISODE_COLUMNS =
+  "id, episode_number, season_number, title, okru_embed_url, duration, thumbnail_url, streamed_at, view_count, like_count";
+
 interface EpisodeRow {
   id: string;
   episode_number: number;
@@ -102,29 +112,70 @@ function mapMediaItem(row: MediaItemRow): MediaItem {
 }
 
 /**
- * Published catalog items, newest first — what the public site shows. Falls
- * back to local demo data until Supabase env vars are set.
+ * The published collections behind a set of ids, with their episodes.
  *
- * Wrapped in React `cache` so the page and its Suspense children can each ask
- * for the catalog without issuing duplicate queries per request.
+ * What the lists that point *into* the catalog resolve against — likes, "Ver
+ * después", the history. They used to go through a `getMediaItems()` that
+ * loaded the entire published catalog and picked rows out of it in JavaScript;
+ * a history of twelve titles now costs twelve rows. The grid itself does not
+ * come through here at all: see lib/catalog.ts.
  */
-export const getMediaItems = cache(async function getMediaItems(): Promise<MediaItem[]> {
-  if (!isSupabaseConfigured) return MOCK_MEDIA.filter((item) => item.published !== false);
+async function getPublishedItemsByIds(ids: string[]): Promise<Map<string, MediaItem>> {
+  if (ids.length === 0) return new Map();
+
+  if (!isSupabaseConfigured) {
+    const wanted = new Set(ids);
+    return new Map(
+      MOCK_MEDIA.filter((item) => item.published !== false && wanted.has(item.id)).map((item) => [
+        item.id,
+        item,
+      ])
+    );
+  }
 
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("media_items")
-    .select("*, episodes(*)")
-    .eq("published", true)
-    .order("created_at", { ascending: false });
+    .select(`*, episodes(${EPISODE_COLUMNS})`)
+    .in("id", ids)
+    .eq("published", true);
 
   if (error || !data) {
-    console.error("getMediaItems: falling back to mock data —", error?.message);
-    return MOCK_MEDIA.filter((item) => item.published !== false);
+    console.error("getPublishedItemsByIds error —", error?.message);
+    return new Map();
   }
 
-  return (data as MediaItemRow[]).map(mapMediaItem);
-});
+  return new Map((data as MediaItemRow[]).map((row) => [row.id, mapMediaItem(row)]));
+}
+
+/**
+ * Which of these collections the person browsing has already opened — the
+ * "Visto" corner on a card.
+ *
+ * Keyed on the ids of the page being drawn rather than read off the whole
+ * history, so an infinite scroll pays for the cards on screen and nothing more.
+ * No `getUser()` first: the policy on watch_history is scoped to `auth.uid()`,
+ * so with no session this simply comes back empty.
+ */
+export async function getWatchedIds(ids: string[]): Promise<Set<string>> {
+  if (!isSupabaseConfigured || ids.length === 0) return new Set();
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("watch_history")
+    .select("media_item_id")
+    .in("media_item_id", ids);
+
+  if (error) {
+    // Fails soft for the same reason as getWatchHistory below: until
+    // supabase/schema.sql is re-run, watch_history does not exist, and a
+    // catalog that refuses to render over a missing badge would be a worse bug.
+    console.error("getWatchedIds error —", error.message);
+    return new Set();
+  }
+
+  return new Set((data ?? []).map((row) => row.media_item_id as string));
+}
 
 /**
  * Every catalog item regardless of published state — for the admin
@@ -136,7 +187,7 @@ export async function getAllMediaItemsForAdmin(): Promise<MediaItem[]> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("media_items")
-    .select("*, episodes(*)")
+    .select(`*, episodes(${EPISODE_COLUMNS})`)
     .order("created_at", { ascending: false });
 
   if (error || !data) {
@@ -164,7 +215,7 @@ export const getMediaBySlug = cache(async function getMediaBySlug(
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("media_items")
-    .select("*, episodes(*)")
+    .select(`*, episodes(${EPISODE_COLUMNS})`)
     .eq("slug", slug)
     .eq("published", true)
     .maybeSingle();
@@ -234,21 +285,21 @@ export interface VideoEntry {
  * Resolves rows that point at a video against the catalog the visitor can
  * actually see.
  *
- * Going through `getMediaItems()` rather than joining in the query is on
- * purpose: it is already loaded and request-cached, and it only ever contains
- * published collections, so a title unpublished since — or an episode the admin
- * has rewritten away — simply drops out of the list instead of rendering as a
- * dead row.
+ * Resolved in a second query keyed on the ids these rows name, rather than
+ * joined in the first one: only published collections come back, so a title
+ * unpublished since — or an episode the admin has rewritten away — simply drops
+ * out of the list instead of rendering as a dead row.
  */
 async function resolveVideoEntries<T>(
   rows: T[],
   pick: (row: T) => { mediaItemId: string; at: string; episodeOf: (item: MediaItem) => Episode | undefined | null }
 ): Promise<VideoEntry[]> {
-  const items = await getMediaItems();
-  const byId = new Map(items.map((item) => [item.id, item]));
+  // Once per row: `pick` builds a closure over the row, and the ids are needed
+  // before the query that the rest of it is resolved against.
+  const picked = rows.map(pick);
+  const byId = await getPublishedItemsByIds([...new Set(picked.map((row) => row.mediaItemId))]);
 
-  return rows.flatMap((row) => {
-    const { mediaItemId, at, episodeOf } = pick(row);
+  return picked.flatMap(({ mediaItemId, at, episodeOf }) => {
     const item = byId.get(mediaItemId);
     if (!item) return [];
 
@@ -391,7 +442,7 @@ export async function getMediaItemById(id: string): Promise<MediaItem | null> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("media_items")
-    .select("*, episodes(*)")
+    .select(`*, episodes(${EPISODE_COLUMNS})`)
     .eq("id", id)
     .maybeSingle();
 

@@ -60,10 +60,17 @@ Ejecuta [supabase/schema.sql](supabase/schema.sql) completo en el editor SQL de 
 idempotente: crea tablas, índices, políticas RLS, triggers y funciones, y también sirve de
 migración sobre una versión anterior del mismo archivo.
 
-> **Vuelve a ejecutarlo tras actualizar.** La última versión añade `watch_later`,
-> `toggle_watch_later()` y el helper `episode_ref_of()`, que ahora usa también
-> `register_video_view()`. Hasta que lo hagas, «Ver después» se queda vacío y su botón
-> responde con un error —la página no se rompe si la tabla falta—.
+> **Vuelve a ejecutarlo tras actualizar.** La última versión añade la vista `media_catalog`,
+> las funciones `search_media()` y `catalog_facets()` y la columna generada
+> `episodes.search_text`, que son de donde sale ahora el catálogo entero. **Hasta que lo
+> hagas la rejilla se queda vacía**, con el motivo en el log del servidor: es la única parte
+> que no puede fallar en silencio. La versión anterior había añadido `watch_later`,
+> `toggle_watch_later()` y el helper `episode_ref_of()`; si te saltaste aquella, «Ver
+> después» se queda vacío y su botón responde con un error —eso sí sin romper la página—.
+>
+> Añadir `episodes.search_text` reescribe la tabla una vez. Es una columna generada, así que
+> se mantiene sola; pero si alguna vez cambias el cuerpo de `episode_search_text()` hay que
+> borrarla y volver a crearla para que el texto almacenado se recalcule.
 
 ### 4. Crear el administrador
 
@@ -178,11 +185,43 @@ formularios de sesión.
 
 ### Búsqueda y filtros
 
-El catálogo se filtra en el servidor a partir de la URL ([lib/media-filter.ts](lib/media-filter.ts)).
-Dos de esas listas **no están escritas a mano**, se derivan de los datos: los años de stream
-y los géneros, cada uno con el número de colecciones que lo llevan. El formulario de /admin
-acepta géneros como texto libre, así que una lista fija ofrecería géneros vacíos y nunca
-mostraría uno nuevo.
+El catálogo se filtra **en Postgres** a partir de la URL. La función `search_media()`
+([supabase/schema.sql](supabase/schema.sql)) recibe los filtros, ordena, cuenta y devuelve una
+página; la vista `media_catalog` que consulta ya trae agregado lo que antes sumaba cada
+tarjeta —número de episodios, vistas y me gusta de toda la colección— y las claves
+normalizadas contra las que comparan los filtros. [lib/catalog.ts](lib/catalog.ts) la llama y
+[lib/media-filter.ts](lib/media-filter.ts) valida cada valor de la URL antes de que llegue
+allí; las mismas reglas siguen implementadas en JavaScript para los datos de ejemplo, que es
+lo que se ve sin Supabase configurado.
+
+Antes esto era `select("*, episodes(*)")` sin límite y todo el trabajo en JavaScript: el
+catálogo entero —pósters, descripciones y una fila por stream— viajaba en cada petición, y
+crecía sin techo con el canal. Con 400 colecciones y 60 000 episodios de prueba, esa consulta
+son ~26 MB y ~134 ms; una página del catálogo son ~12 KB y ~10-25 ms, y una búsqueda sobre
+todos los episodios ~16 ms. Ese último número depende de `episodes.search_text`, una columna
+generada que almacena el título y la fecha ya normalizados: construirla al vuelo en cada
+búsqueda costaba ~130 ms, leerla cuesta ~12 ms.
+
+La rejilla se llena de 24 en 24 con **scroll infinito**
+([catalog-feed.tsx](components/media/catalog-feed.tsx)). La primera página la renderiza el
+servidor, así que lo primero que se ve no necesita JavaScript; las siguientes las pide un
+`IntersectionObserver` con 800 px de margen —una pantalla de antelación— a través de una
+server action, y hay un botón «Cargar más» que hace lo mismo para quien no llegue por el
+scroll. El orden de `search_media()` es total (desempata por `created_at` y luego por `id`),
+de modo que dos páginas consecutivas no pueden repetir ni saltarse una colección; aun así el
+feed descarta los `id` que ya tiene, por si el catálogo cambió entre una y otra. Cambiar un
+filtro es una navegación, no un estado del cliente: la página vuelve a montar el feed, así que
+nunca se mezclan resultados de dos filtros.
+
+Los encabezados por año cuentan la sección entera, no lo cargado hasta ese momento:
+`search_media()` devuelve también el recuento por año de todo el resultado.
+
+Dos de las listas de la barra **no están escritas a mano**, se derivan de los datos: los años
+de stream y los géneros, cada uno con el número de colecciones que lo llevan. Salen de
+`catalog_facets()`, sobre todo el catálogo publicado y no sobre la página cargada —son las
+opciones disponibles, y una barra que solo ofreciera lo que los filtros actuales ya dejaron en
+pie sería un callejón sin salida—. El formulario de /admin acepta géneros como texto libre,
+así que una lista fija ofrecería géneros vacíos y nunca mostraría uno nuevo.
 
 Como ese texto es libre, en el catálogo conviven grafías del mismo género que solo difieren
 en tildes o mayúsculas. Se agrupan en una sola opción, y gana la que conserva los acentos
@@ -265,12 +304,18 @@ media_items ──< watch_history  (user_id + media_item_id → episode_ref)
 profiles (1:1 con auth.users)      okru_channels (catálogo para el importador)
 ```
 
+Sobre `media_items` y `episodes` hay además una vista, `media_catalog`: una fila por colección
+con los contadores ya sumados y las claves normalizadas que comparan los filtros. Es de donde
+lee `search_media()`, y es `security_invoker`, así que las mismas políticas RLS de las tablas
+de debajo deciden lo que ve quien pregunta.
+
 Una colección es **episódica** (series, anime) o de **video único** (película, karaoke,
 especial). Esa distinción recorre todo el código: el video único guarda su `okru_embed_url`,
 sus vistas y sus me gusta en la propia fila de `media_items`; la episódica los guarda en cada
-episodio. Por eso los totales que ve el visitante se derivan al leer, con `totalViewsOf` y
-`totalLikesOf` en [types/media.ts](types/media.ts), y nunca se almacenan sumados: mover un
-episodio a otra colección no puede descuadrarlos.
+episodio. Por eso los totales que ve el visitante se derivan al leer —en la vista para la
+rejilla, con `totalViewsOf` y `totalLikesOf` de [types/media.ts](types/media.ts) donde ya hay
+un `MediaItem` completo en la mano— y nunca se almacenan sumados: mover un episodio a otra
+colección no puede descuadrarlos.
 
 Las fechas de stream se guardan como `timestamp` **sin zona horaria** y se formatean sin pasar
 por `Date` ([lib/stream-date.ts](lib/stream-date.ts)): un stream de las 00:19 no debe
@@ -349,12 +394,6 @@ de confirmación ya acepta el tipo `recovery`
 ([auth/confirm/route.ts:13](app/auth/confirm/route.ts#L13)), pero no existen ni el formulario
 de "olvidé mi contraseña" ni la página para fijar la nueva. Es la mitad de un flujo ya
 construido.
-
-**El catálogo entero se carga en cada petición.** `select("*, episodes(*)")` sin límite, con el
-filtrado y el orden hechos en JavaScript ([queries.ts:115](lib/queries.ts#L115)). Con un canal
-de cientos de streams esto crece sin techo en payload, memoria y tiempo hasta el primer
-render. Habría que mover filtros y orden a Postgres, con paginación o scroll infinito y una
-vista que ya traiga los contadores agregados.
 
 **Trabajo muerto:** `rating` se guarda y se edita en el panel
 ([media-form.tsx:403](components/admin/media-form.tsx#L403)) pero no se muestra en ninguna

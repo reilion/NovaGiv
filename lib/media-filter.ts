@@ -1,6 +1,7 @@
+import { FILTER_TABS, SORT_OPTIONS } from "@/lib/constants";
 import { normalizeSearch, stripAccents } from "@/lib/text";
 import type { SearchParamsRecord } from "@/lib/url";
-import type { Episode, MediaItem, MediaType, SortOption } from "@/types/media";
+import type { CatalogItem, Episode, MediaItem, MediaType, SortOption } from "@/types/media";
 
 export interface FilterParams {
   type: MediaType | "all";
@@ -19,20 +20,50 @@ export interface FilterParams {
 /** Also what the filter bar falls back to, so the two cannot drift apart. */
 export const DEFAULT_SORT: SortOption = "streamed";
 
+/** Taken from the lists the filter bar offers, so the two cannot drift apart. */
+const MEDIA_TYPES = new Set<string>(FILTER_TABS.map((tab) => tab.value));
+const SORTS = new Set<string>(SORT_OPTIONS.map((option) => option.value));
+
+/**
+ * A bound on the free-text params. Longer than any real title or date, and
+ * short enough that a hand-made URL cannot turn one query into a long scan.
+ */
+const MAX_TEXT_LENGTH = 120;
+
+const YEAR_PATTERN = /^\d{4}$/;
+const MONTH_PATTERN = /^(?:[1-9]|1[0-2])$/;
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
 function str(value: string | string[] | undefined, fallback: string): string {
   return typeof value === "string" ? value : fallback;
 }
 
+/**
+ * The filters of a URL, as the catalog query takes them.
+ *
+ * Every value is validated here rather than where it is used: these end up as
+ * arguments to `search_media` in Postgres, and this is the one place the
+ * address bar — or the infinite scroll's own request — gets to speak. Anything
+ * unrecognized falls back to "unset", which is what a stale or hand-typed link
+ * should do: show the catalog, not an error.
+ */
 export function parseFilterParams(searchParams: SearchParamsRecord): FilterParams {
+  const type = str(searchParams.tab, "all");
+  const sort = str(searchParams.sort, DEFAULT_SORT);
+  const year = str(searchParams.year, "all");
+  const month = str(searchParams.month, "all");
+  const from = str(searchParams.from, "");
+  const to = str(searchParams.to, "");
+
   return {
-    type: str(searchParams.tab, "all") as FilterParams["type"],
-    genre: str(searchParams.genre, "all"),
-    sort: str(searchParams.sort, DEFAULT_SORT) as SortOption,
-    search: str(searchParams.q, ""),
-    year: str(searchParams.year, "all"),
-    month: str(searchParams.month, "all"),
-    from: str(searchParams.from, ""),
-    to: str(searchParams.to, ""),
+    type: (MEDIA_TYPES.has(type) ? type : "all") as FilterParams["type"],
+    genre: str(searchParams.genre, "all").slice(0, MAX_TEXT_LENGTH),
+    sort: (SORTS.has(sort) ? sort : DEFAULT_SORT) as SortOption,
+    search: str(searchParams.q, "").slice(0, MAX_TEXT_LENGTH),
+    year: YEAR_PATTERN.test(year) ? year : "all",
+    month: MONTH_PATTERN.test(month) ? month : "all",
+    from: DATE_PATTERN.test(from) ? from : "",
+    to: DATE_PATTERN.test(to) ? to : "",
   };
 }
 
@@ -204,11 +235,24 @@ export function collectStreamYears(items: MediaItem[]): number[] {
   return [...years].sort((a, b) => b - a);
 }
 
+/** Everything that carries a stream range: a catalog row or a full item. */
+type Streamed = Pick<MediaItem, "firstStreamedAt" | "lastStreamedAt">;
+
 /** Sort key for stream date; collections without dates sort last. */
-function streamKey(item: MediaItem): string {
+function streamKey(item: Streamed): string {
   return item.lastStreamedAt ?? item.firstStreamedAt ?? "";
 }
 
+/**
+ * The whole catalog, filtered and sorted in JavaScript.
+ *
+ * Only the demo data goes through here now. Against Supabase this is
+ * `search_media` (see supabase/schema.sql), which does the same thing one page
+ * at a time and without loading a single episode row — the rules below are the
+ * specification that function was written from, so the two have to keep
+ * agreeing. Everything the mock catalog holds fits in memory several times
+ * over, which is why it is still worth having both.
+ */
 export function filterAndSortMedia(
   items: MediaItem[],
   { type, search, genre, sort, year, month, from, to }: FilterParams
@@ -265,19 +309,28 @@ export function filterAndSortMedia(
   });
 }
 
-export interface YearGroup {
+export interface YearGroup<T = CatalogItem> {
   /** null for collections with no stream date at all. */
   year: number | null;
-  items: MediaItem[];
+  items: T[];
 }
 
 /**
  * Splits the (already sorted) list into per-year sections for the default
  * view. A collection is filed under the year of its most recent stream, so it
  * appears exactly once; undated ones land in a trailing group.
+ *
+ * Runs over whatever has been loaded so far, which under the infinite scroll is
+ * a growing prefix of the result: the rows arrive already ordered, so appending
+ * a page either extends the last section or opens the next one. How many
+ * collections a section holds *in total* is a separate number the catalog query
+ * returns — see `yearCounts` in lib/catalog.ts.
  */
-export function groupByStreamYear(items: MediaItem[], ascending = false): YearGroup[] {
-  const groups = new Map<number | null, MediaItem[]>();
+export function groupByStreamYear<T extends Streamed>(
+  items: T[],
+  ascending = false
+): YearGroup<T>[] {
+  const groups = new Map<number | null, T[]>();
 
   for (const item of items) {
     const key = streamKey(item);

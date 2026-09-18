@@ -736,3 +736,506 @@ $$;
 
 revoke all on function toggle_watch_later(uuid, uuid) from public;
 grant execute on function toggle_watch_later(uuid, uuid) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Catálogo paginado
+-- ---------------------------------------------------------------------------
+-- The grid used to be built by loading `select *, episodes(*)` with no limit
+-- and doing every filter, every sort and every counter in JavaScript. That is
+-- the whole catalog — posters, descriptions and one row per stream — travelling
+-- to the server on each request, and growing without a ceiling as the channel
+-- does. Everything below moves that work into Postgres: one view that already
+-- carries the aggregated counters and the normalized keys the filters compare
+-- against, and two functions the app calls instead — a page of results, and the
+-- facets the filter bar lists.
+--
+-- The matching rules are the ones lib/media-filter.ts applied in JS, kept
+-- deliberately identical so the same URL returns the same catalog as before.
+
+-- Case- and accent-insensitive form, mirroring normalizeSearch() in lib/text.ts.
+-- Immutable — that is what lets the genre index below be built on it.
+create or replace function public.normalize_search(p_value text)
+returns text
+language sql
+immutable
+parallel safe
+as $$
+  select lower(translate(coalesce(p_value, ''), 'áéíóúüñÁÉÍÓÚÜÑ', 'aeiouunAEIOUUN'));
+$$;
+
+-- The genres of a collection as the filter compares them: trimmed, normalized,
+-- deduplicated. "Fantasia", "Fantasía" and "fantasía" collapse into one key
+-- here, exactly as collectGenres() folds them into one option.
+create or replace function public.normalize_genres(p_genres text[])
+returns text[]
+language sql
+immutable
+parallel safe
+as $$
+  select coalesce(
+    array_agg(distinct public.normalize_search(btrim(g))) filter (where btrim(g) <> ''),
+    '{}'::text[]
+  )
+  from unnest(coalesce(p_genres, '{}'::text[])) g;
+$$;
+
+-- "2026-07-28T00:19:09" — a stream date exactly as the app receives it. Written
+-- out by hand rather than with to_char(), which reads DateStyle and is
+-- therefore only stable; this has to be immutable to be storable below.
+create or replace function public.iso_stamp(p_at timestamp)
+returns text
+language sql
+immutable
+parallel safe
+as $$
+  select case
+    when p_at is null then ''
+    else
+      lpad(extract(year from p_at)::text, 4, '0') || '-' ||
+      lpad(extract(month from p_at)::text, 2, '0') || '-' ||
+      lpad(extract(day from p_at)::text, 2, '0') || 'T' ||
+      lpad(extract(hour from p_at)::text, 2, '0') || ':' ||
+      lpad(extract(minute from p_at)::text, 2, '0') || ':' ||
+      lpad(trunc(extract(second from p_at))::text, 2, '0')
+  end;
+$$;
+
+-- What one episode can be found by: its title and the stream date behind it, so
+-- an ISO-style query ("2026-07-13") lands on the night somebody remembers.
+-- Mirrors episodeHaystack() in lib/media-filter.ts.
+create or replace function public.episode_search_text(p_title text, p_streamed_at timestamp)
+returns text
+language sql
+immutable
+parallel safe
+as $$
+  select public.normalize_search(coalesce(p_title, '') || ' ' || public.iso_stamp(p_streamed_at));
+$$;
+
+-- ...stored, because building it per row is what a catalog-wide search costs.
+-- Over sixty thousand episodes, computing this on the fly is ~130 ms and
+-- reading it back is ~12 ms: the same scan, minus the string building. Adding
+-- the column rewrites the table once, which is the point — every search after
+-- that is paid for at import time instead.
+--
+-- Generated, not a trigger, so it cannot drift from the episode it describes.
+-- Postgres allows `create or replace` on the function above even with this
+-- column depending on it, so re-running this file is safe — but *changing* that
+-- function's body would leave the stored text behind, and the column has to be
+-- dropped and re-added to pick the new one up.
+alter table episodes add column if not exists search_text text
+  generated always as (public.episode_search_text(title, streamed_at)) stored;
+
+-- Concrete dates a collection was streamed on — its episodes' when they carry
+-- dates, else the two ends of its range. Drives the custom-range filter, and
+-- matches coveredDates() in lib/media-filter.ts.
+create or replace function public.stream_date_keys(
+  p_episode_dates date[],
+  p_first timestamp,
+  p_last timestamp
+)
+returns date[]
+language sql
+immutable
+parallel safe
+as $$
+  select case
+    when coalesce(array_length(p_episode_dates, 1), 0) > 0 then p_episode_dates
+    else (
+      select coalesce(array_agg(distinct d), '{}'::date[])
+      from unnest(array[p_first::date, p_last::date]) d
+      where d is not null
+    )
+  end;
+$$;
+
+-- The months a collection covers, as YYYYMM. Episode dates when it has them;
+-- otherwise every month its range spans, so a collection streamed across March
+-- and April answers to both. Mirrors coveredMonths(), guard included: a
+-- malformed range cannot make this walk forever.
+create or replace function public.stream_month_keys(
+  p_episode_dates date[],
+  p_first timestamp,
+  p_last timestamp
+)
+returns int[]
+language sql
+immutable
+parallel safe
+as $$
+  select case
+    when coalesce(array_length(p_episode_dates, 1), 0) > 0 then (
+      select coalesce(
+        array_agg(distinct extract(year from d)::int * 100 + extract(month from d)::int),
+        '{}'::int[]
+      )
+      from unnest(p_episode_dates) d
+    )
+    when p_first is null and p_last is null then '{}'::int[]
+    else (
+      select coalesce(
+        array_agg(extract(year from g)::int * 100 + extract(month from g)::int),
+        '{}'::int[]
+      )
+      from generate_series(
+        date_trunc('month', coalesce(p_first, p_last)),
+        least(
+          date_trunc('month', coalesce(p_last, p_first)),
+          date_trunc('month', coalesce(p_first, p_last)) + interval '600 months'
+        ),
+        interval '1 month'
+      ) g
+    )
+  end;
+$$;
+
+-- One row per collection, carrying what the grid draws and what the filters
+-- compare against — so neither the episode rows nor their counters ever have to
+-- reach the app.
+--
+-- security_invoker so the read policies on media_items and episodes still
+-- decide what a caller sees: for an anonymous visitor this view holds exactly
+-- the published catalog, and drafts stay invisible without a second `published`
+-- check anywhere.
+drop view if exists public.media_catalog;
+create view public.media_catalog
+with (security_invoker = on)
+as
+select
+  m.id,
+  m.title,
+  m.slug,
+  m.type,
+  m.poster_url,
+  m.genres,
+  m.year,
+  m.description,
+  m.duration,
+  m.okru_embed_url,
+  m.status,
+  m.rating,
+  m.published,
+  m.first_streamed_at,
+  m.last_streamed_at,
+  m.okru_channel_id,
+  m.okru_channel_name,
+  m.okru_channel_url,
+  m.okru_channel_primary,
+  m.created_at,
+  coalesce(ep.episode_count, 0)::int as episode_count,
+  -- What totalViewsOf()/totalLikesOf() used to add up in the browser: the
+  -- collection's own counter plus every one of its episodes'.
+  (m.view_count + coalesce(ep.view_total, 0))::int as total_view_count,
+  (m.like_count + coalesce(ep.like_total, 0))::int as total_like_count,
+  public.normalize_genres(m.genres) as genres_normalized,
+  -- The collection's own searchable text. Its episodes' is deliberately not
+  -- folded in here: building it would mean concatenating every episode title in
+  -- the catalog on every request, including the vast majority that carry no
+  -- search at all. search_media reaches for the episodes only when there is a
+  -- query, and then one at a time — which is also how the JS search read them.
+  public.normalize_search(m.title || E'\n' || coalesce(m.description, ''))
+    as search_text,
+  public.stream_date_keys(ep.streamed_dates, m.first_streamed_at, m.last_streamed_at)
+    as stream_dates,
+  public.stream_month_keys(ep.streamed_dates, m.first_streamed_at, m.last_streamed_at)
+    as stream_months,
+  -- The date the chronological sorts and the year sections key on; null for a
+  -- collection that has never been dated, which sinks it to the bottom.
+  coalesce(m.last_streamed_at, m.first_streamed_at) as streamed_sort_at
+from media_items m
+left join lateral (
+  select
+    count(*) as episode_count,
+    sum(e.view_count) as view_total,
+    sum(e.like_count) as like_total,
+    array_agg(distinct e.streamed_at::date) filter (where e.streamed_at is not null)
+      as streamed_dates
+  from episodes e
+  where e.media_item_id = m.id
+) ep on true;
+
+grant select on public.media_catalog to anon, authenticated;
+
+-- Genre filtering is an array containment test over a normalized array, which
+-- is exactly what a GIN index answers.
+create index if not exists media_items_genres_normalized_idx
+  on media_items using gin (public.normalize_genres(genres));
+
+-- The two orderings the catalog pages through, with the published predicate
+-- they always carry.
+create index if not exists media_items_published_created_at_idx
+  on media_items (published, created_at desc);
+create index if not exists media_items_published_streamed_idx
+  on media_items (published, last_streamed_at desc nulls last);
+
+-- One page of the catalog: filtered, sorted and counted in the database.
+--
+-- Returns json rather than a row set so a page arrives in one round trip with
+-- the two numbers only the database can know — how many collections match in
+-- total, and how many fall in each year section — instead of the app inferring
+-- them from the slice it happens to hold.
+--
+-- Everything here is a value the address bar can carry, so every parameter is
+-- clamped or normalized before it reaches a query: p_limit has a ceiling, the
+-- sort falls back to the default, and the search is compared with strpos()
+-- rather than LIKE, so a `%` typed into the box is a literal percent sign.
+drop function if exists public.search_media(text, text, text, text, int, int, date, date, int, int);
+create function public.search_media(
+  p_type text default 'all',
+  p_search text default '',
+  p_genre text default 'all',
+  p_sort text default 'streamed',
+  p_year int default null,
+  p_month int default null,
+  p_from date default null,
+  p_to date default null,
+  p_limit int default 24,
+  p_offset int default 0
+)
+returns json
+language plpgsql
+stable
+set search_path = public
+as $$
+declare
+  v_query text := nullif(public.normalize_search(btrim(coalesce(p_search, ''))), '');
+  v_genre text := case
+                    when coalesce(btrim(p_genre), 'all') in ('all', '') then null
+                    else nullif(public.normalize_search(btrim(p_genre)), '')
+                  end;
+  v_type text := nullif(coalesce(btrim(p_type), 'all'), 'all');
+  v_sort text := coalesce(nullif(btrim(p_sort), ''), 'streamed');
+  v_limit int := least(greatest(coalesce(p_limit, 24), 1), 60);
+  v_offset int := greatest(coalesce(p_offset, 0), 0);
+  -- A custom range replaces the year/month quick filters rather than stacking
+  -- with them, so the two can never contradict each other.
+  v_has_range boolean := p_from is not null or p_to is not null;
+  v_from date := coalesce(p_from, date '0001-01-01');
+  v_to date := coalesce(p_to, date '9999-12-31');
+  v_result json;
+begin
+  with filtered as (
+    -- Projected down to what the page actually draws: the keys the filters
+    -- compare against are of no use past this point, and carrying them through
+    -- the sort would mean materializing them for every matching collection.
+    select
+      c.id,
+      c.title,
+      c.slug,
+      c.type,
+      c.poster_url,
+      c.genres,
+      c.year,
+      c.duration,
+      c.status,
+      c.created_at,
+      c.first_streamed_at,
+      c.last_streamed_at,
+      c.episode_count,
+      c.total_view_count,
+      c.total_like_count,
+      c.streamed_sort_at
+    from public.media_catalog c
+    where c.published
+      and (v_type is null or c.type = v_type)
+      and (v_genre is null or v_genre = any (c.genres_normalized))
+      -- Title or description, or any one of its episodes — reaching the
+      -- episodes is what makes a catalog of dated streams findable at all: the
+      -- collection is called "H1NMTSR", while what somebody remembers is the
+      -- night they watched it. The exists() stops at the first match, and never
+      -- runs at all when nothing is being searched.
+      and (
+        v_query is null
+        or strpos(c.search_text, v_query) > 0
+        or exists (
+          select 1
+          from episodes e
+          where e.media_item_id = c.id
+            and strpos(e.search_text, v_query) > 0
+        )
+      )
+      and (
+        case
+          when v_has_range then exists (
+            select 1 from unnest(c.stream_dates) d where d between v_from and v_to
+          )
+          when p_year is null and p_month is null then true
+          else exists (
+            select 1 from unnest(c.stream_months) mm
+            where (p_year is null or mm / 100 = p_year)
+              and (p_month is null or mm % 100 = p_month)
+          )
+        end
+      )
+  ),
+  -- Numbered before the slice, so the ordering is written once and the page
+  -- boundaries can never disagree with it. created_at + id break every tie:
+  -- without a total order, two requests for consecutive pages could show the
+  -- same collection twice, or skip it.
+  ranked as (
+    select
+      f.*,
+      row_number() over (
+        order by
+          case when v_sort = 'az' then public.normalize_search(f.title) end asc nulls last,
+          case when v_sort = 'year' then f.year end desc nulls last,
+          case when v_sort = 'recent' then f.created_at end desc nulls last,
+          case when v_sort = 'streamed-asc' then f.streamed_sort_at end asc nulls last,
+          case
+            when v_sort not in ('az', 'year', 'recent', 'streamed-asc')
+            then f.streamed_sort_at
+          end desc nulls last,
+          f.created_at desc,
+          f.id
+      ) as rn
+    from filtered f
+  ),
+  page as (
+    select r.* from ranked r where r.rn > v_offset and r.rn <= v_offset + v_limit
+  ),
+  -- Only over the page: which of this collection's episodes the search matched,
+  -- and which one its card should open at. What matchingEpisodes() did in the
+  -- browser, except the episode rows never leave the database.
+  page_matches as (
+    select p.*, coalesce(me.matched_count, 0) as matched_count, me.first_ref
+    from page p
+    left join lateral (
+      select
+        count(*)::int as matched_count,
+        (array_agg(x.ref order by x.season_key, x.episode_number))[1] as first_ref
+      from (
+        select
+          coalesce(e.season_number, 1) as season_key,
+          e.episode_number,
+          -- The "12" / "2x12" the URL carries — see episodeParam() in
+          -- lib/episode-param.ts and episode_ref_of() above, which this agrees with.
+          case
+            when coalesce(e.season_number, 1) > 1
+              then coalesce(e.season_number, 1)::text || 'x' || e.episode_number::text
+            else e.episode_number::text
+          end as ref
+        from episodes e
+        where e.media_item_id = p.id
+          and v_query is not null
+          and strpos(e.search_text, v_query) > 0
+      ) x
+    ) me on true
+  ),
+  -- How many collections each year section holds across the whole result, not
+  -- just the part loaded so far, so an infinite-scrolling grid can label its
+  -- sections correctly from the first screen. Filed under the year of the most
+  -- recent stream, as groupByStreamYear() files them.
+  year_counts as (
+    select extract(year from f.streamed_sort_at)::int as year, count(*)::int as count
+    from filtered f
+    group by 1
+  )
+  select json_build_object(
+    'total', (select count(*) from filtered),
+    'items', coalesce(
+      (
+        select json_agg(
+          json_build_object(
+            'id', p.id,
+            'title', p.title,
+            'slug', p.slug,
+            'type', p.type,
+            'posterUrl', p.poster_url,
+            'genres', p.genres,
+            'year', p.year,
+            'duration', p.duration,
+            'status', p.status,
+            'createdAt', p.created_at,
+            'firstStreamedAt', p.first_streamed_at,
+            'lastStreamedAt', p.last_streamed_at,
+            'episodeCount', p.episode_count,
+            'views', p.total_view_count,
+            'likes', p.total_like_count,
+            'matchedEpisodes', p.matched_count,
+            'matchedEpisodeRef', p.first_ref
+          )
+          order by p.rn
+        )
+        from page_matches p
+      ),
+      '[]'::json
+    ),
+    'yearCounts', coalesce(
+      (
+        select json_agg(json_build_object('year', y.year, 'count', y.count))
+        from year_counts y
+      ),
+      '[]'::json
+    )
+  )
+  into v_result;
+
+  return v_result;
+end;
+$$;
+
+revoke all on function public.search_media(text, text, text, text, int, int, date, date, int, int) from public;
+grant execute on function public.search_media(text, text, text, text, int, int, date, date, int, int)
+  to anon, authenticated;
+
+-- What the filter bar lists: the genres actually present in the catalog with
+-- how many collections carry each, and every year that was streamed in.
+--
+-- Both are derived rather than kept by hand — the admin form takes genres as
+-- free text, so a fixed list would offer genres nothing is filed under and
+-- never show a new one. Of several spellings of the same genre the one that
+-- kept its accents wins (it is the correct Spanish one), and between equals the
+-- one used most. Same rule as preferredSpelling() in lib/media-filter.ts.
+drop function if exists public.catalog_facets();
+create function public.catalog_facets()
+returns json
+language sql
+stable
+set search_path = public
+as $$
+  with tagged as (
+    select m.id, btrim(g) as label, public.normalize_search(btrim(g)) as key
+    from media_items m
+    cross join unnest(m.genres) g
+    where m.published and btrim(g) <> ''
+  ),
+  counts as (
+    -- Per collection, so one tagged both "Fantasia" and "Fantasía" counts once.
+    select t.key, count(distinct t.id)::int as count from tagged t group by t.key
+  ),
+  variants as (
+    select
+      t.key,
+      t.label,
+      count(*)::int as uses,
+      -- Diacritics the spelling kept, which is what picks "Fantasía".
+      length(t.label) - length(translate(t.label, 'áéíóúüñÁÉÍÓÚÜÑ', '')) as accents
+    from tagged t
+    group by t.key, t.label
+  ),
+  best as (
+    select distinct on (v.key) v.key, v.label
+    from variants v
+    order by v.key, v.accents desc, v.uses desc, v.label
+  ),
+  years as (
+    select distinct (mm / 100) as year
+    from public.media_catalog c
+    cross join unnest(c.stream_months) mm
+    where c.published
+  )
+  select json_build_object(
+    'genres', coalesce(
+      (
+        select json_agg(json_build_object('genre', b.label, 'count', c.count) order by b.label)
+        from best b
+        join counts c on c.key = b.key
+      ),
+      '[]'::json
+    ),
+    'years', coalesce((select json_agg(y.year order by y.year desc) from years y), '[]'::json)
+  );
+$$;
+
+revoke all on function public.catalog_facets() from public;
+grant execute on function public.catalog_facets() to anon, authenticated;

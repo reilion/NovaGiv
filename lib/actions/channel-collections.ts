@@ -79,7 +79,12 @@ export async function listChannelSiblings(
 
   const { data, error } = await supabase
     .from("media_items")
-    .select("id, title, type, published, okru_channel_primary, episodes(*)")
+    // Spelled out rather than episodes(*): the table also carries the stored
+    // search_text the catalog query reads, which nothing here draws. One string
+    // literal on purpose — supabase-js types the result off the select text, and
+    // a concatenated one is opaque to it.
+    // prettier-ignore
+    .select("id, title, type, published, okru_channel_primary, episodes(id, episode_number, season_number, title, okru_embed_url, duration, thumbnail_url, streamed_at)")
     .eq("okru_channel_id", channelId)
     .neq("id", mediaItemId)
     .order("title");

@@ -76,6 +76,78 @@ export interface MediaItem {
   likes?: number;
 }
 
+/**
+ * One card of the catalog grid, exactly as `search_media` hands it over.
+ *
+ * Deliberately not a `MediaItem`: the grid never draws an episode, and a
+ * collection of two hundred streams used to ship all two hundred of them to
+ * render a "200 ep." badge. Everything the card needs that used to be derived
+ * from that list — the episode count, the view and like totals, which episodes
+ * a search matched — is aggregated by the `media_catalog` view instead, so a
+ * page of the catalog costs the same whatever the collections hold.
+ */
+export interface CatalogItem {
+  id: string;
+  title: string;
+  slug: string;
+  type: MediaType;
+  posterUrl: string;
+  genres: string[];
+  year?: number;
+  duration?: string;
+  status?: MediaStatus;
+  createdAt: string;
+  firstStreamedAt?: string;
+  lastStreamedAt?: string;
+  /** Videos in the collection; 0 for a movie, karaoke or especial. */
+  episodeCount: number;
+  /** Every video of the collection added up — what `totalViewsOf` derives. */
+  views: number;
+  /** Same for likes — see `totalLikesOf`. */
+  likes: number;
+  /** Episodes matching the active search; 0 when nothing is being searched. */
+  matchedEpisodes: number;
+  /** `?ep=` value of the first of them, so the card opens straight at it. */
+  matchedEpisodeRef?: string;
+}
+
+/**
+ * A catalog card plus what this particular visitor makes of it. Resolved per
+ * page on the server rather than passed down as two id sets, so a page appended
+ * by the infinite scroll arrives already knowing its own badges.
+ */
+export interface CatalogCard extends CatalogItem {
+  /** True once this account has opened the collection — see the history shelf. */
+  watched: boolean;
+  /** Added since this browser's previous visit — see lib/last-visit.ts. */
+  isNew: boolean;
+}
+
+/** How many collections one year section holds across a whole result. */
+export interface CatalogYearCount {
+  /** null for the trailing section of collections with no stream date. */
+  year: number | null;
+  count: number;
+}
+
+/**
+ * One page of the catalog grid. Produced on the server by `getCatalogPage`
+ * (lib/catalog.ts) and appended to in the browser by the infinite scroll, which
+ * is why it lives here rather than beside the query: both halves need the shape.
+ */
+export interface CatalogPage {
+  items: CatalogCard[];
+  /** Collections matching the filters in total — not just the ones loaded. */
+  total: number;
+  /** Where the next page starts, or null once there is nothing left. */
+  nextOffset: number | null;
+  /**
+   * Counted over the whole result, so a year heading can say how many
+   * collections it holds before the scroll has reached the end of it.
+   */
+  yearCounts: CatalogYearCount[];
+}
+
 /** The ok.ru origin of a collection, as edited in the admin form. */
 export interface OkRuChannelRef {
   id: string;

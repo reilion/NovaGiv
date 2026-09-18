@@ -1,65 +1,52 @@
-import { cookies } from "next/headers";
-
-import { MediaGrid, MediaGridByYear } from "@/components/media/media-grid";
-import { LAST_VISIT_COOKIE, newSince } from "@/lib/last-visit";
-import {
-  filterAndSortMedia,
-  groupByStreamYear,
-  parseFilterParams,
-  shouldGroupByYear,
-} from "@/lib/media-filter";
-import { getMediaItems, getWatchHistory } from "@/lib/queries";
-import { type SearchParamsRecord } from "@/lib/url";
+import { CatalogFeed } from "@/components/media/catalog-feed";
+import { getCatalogPage } from "@/lib/catalog";
+import { parseFilterParams, shouldGroupByYear } from "@/lib/media-filter";
+import { filterStateKey, type SearchParamsRecord } from "@/lib/url";
 
 interface CatalogSectionProps {
   searchParams: SearchParamsRecord;
 }
 
 /**
- * Server Component: fetches the full catalog and applies the
- * tab/search/genre/date filters from the URL. Keeping this on the server means
- * filtering never needs client-side state.
+ * Server Component: loads the first page of the catalog for the
+ * tab/search/genre/date filters in the URL.
+ *
+ * The filtering, the ordering and the counters are all Postgres' work now (see
+ * `search_media` in supabase/schema.sql), so this asks for one page and nothing
+ * else — the rest arrives through the feed below as the visitor scrolls.
  *
  * Opening a video is a navigation to /v/[slug], not a param on this page, so
  * nothing here has to know which title is playing.
  */
 export async function CatalogSection({ searchParams }: CatalogSectionProps) {
-  // Both are request-cached, so the shelf above the grid shares this history.
-  const [items, history, cookieStore] = await Promise.all([
-    getMediaItems(),
-    getWatchHistory(),
-    cookies(),
-  ]);
   const filters = parseFilterParams(searchParams);
-  const filteredItems = filterAndSortMedia(items, filters);
+  const page = await getCatalogPage(filters);
 
-  // One row per collection, so this is at most "everything watched once".
-  const watchedIds = new Set((history ?? []).map((entry) => entry.item.id));
+  // The filters as the feed will send them back when it asks for page two.
+  // Rebuilt from the parsed values rather than forwarded raw, so what the
+  // scroll continues is exactly the result that was rendered.
+  const query = new URLSearchParams(
+    Object.entries({
+      tab: filters.type,
+      q: filters.search,
+      genre: filters.genre,
+      sort: filters.sort,
+      year: filters.year,
+      month: filters.month,
+      from: filters.from,
+      to: filters.to,
+    }).filter(([, value]) => value && value !== "all")
+  ).toString();
 
-  // Added since this browser's previous visit — see lib/last-visit.ts. Anything
-  // already opened is left out: it is not news to whoever watched it.
-  const since = newSince(cookieStore.get(LAST_VISIT_COOKIE)?.value);
-  const newIds = new Set(
-    since === null
-      ? []
-      : filteredItems
-          .filter((item) => !watchedIds.has(item.id) && Date.parse(item.createdAt) > since)
-          .map((item) => item.id)
-  );
-
-  return shouldGroupByYear(filters) ? (
-    <MediaGridByYear
-      groups={groupByStreamYear(filteredItems, filters.sort === "streamed-asc")}
-      search={filters.search}
-      watchedIds={watchedIds}
-      newIds={newIds}
-    />
-  ) : (
-    <MediaGrid
-      items={filteredItems}
-      search={filters.search}
-      watchedIds={watchedIds}
-      newIds={newIds}
+  return (
+    <CatalogFeed
+      // A filter change is a new result, not more of the current one: re-keying
+      // drops whatever the previous scroll had accumulated.
+      key={filterStateKey(searchParams)}
+      initial={page}
+      query={query}
+      grouped={shouldGroupByYear(filters)}
+      ascending={filters.sort === "streamed-asc"}
     />
   );
 }

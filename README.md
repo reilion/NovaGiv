@@ -43,7 +43,8 @@ Copia [.env.example](.env.example) a `.env.local` y complétalo. Las obligatoria
 
 Opcionales: `SITE_URL` (dominio canónico: los enlaces que Supabase manda por correo, y
 también el `canonical`, el `og:url` y el sitemap de cada título — conviene fijarlo en
-producción),
+producción, y **es obligatorio** en producción si activas Turnstile, que lo usa para saber
+desde qué dominio acepta un token),
 `NEXT_PUBLIC_TURNSTILE_SITE_KEY` + `TURNSTILE_SECRET_KEY` (el captcha de los formularios
 de cuenta), `BOT_PROTECTION` (`on`/`off` para el filtro del proxy) — las tres se explican en
 [Protección contra robots](#protección-contra-robots) —,
@@ -397,16 +398,38 @@ Se verifica aquí y no en Supabase (que también sabe hacerlo, en *Authenticatio
 Protection*) por el orden explicado arriba, y por eso **hay que dejar el de Supabase apagado**:
 un token se canjea una sola vez y si los dos lo canjean, uno pierde siempre.
 
-Dos decisiones que conviene conocer antes de tocarlo:
+**Se comprueban tres cosas, no una** ([lib/turnstile/verify.ts](lib/turnstile/verify.ts)):
+
+| Campo | Contra qué |
+|---|---|
+| `success` | Que alguien pasó un desafío de este widget |
+| `action` | Que fue *este* formulario: `login` o `register`, el mismo valor que manda el widget |
+| `hostname` | Que fue *este* sitio: el host de `SITE_URL` en producción, `localhost`/`127.0.0.1` solo fuera de ella |
+
+El tercero es el que hace el trabajo de verdad, y omitirlo es el error que merece nombre
+propio. El site key es público por diseño, y la lista de dominios del widget tiene que incluir
+`localhost` para que el desafío se dibuje en desarrollo: sin esta comprobación, cualquiera
+puede servir el mismo widget desde su máquina, resolverlo allí y gastar el token aquí —
+`success` sería perfectamente `true` y el captcha no valdría nada frente a quien haga eso a
+escala. Por eso `localhost` nunca entra en la lista de producción, y por eso **`SITE_URL` deja
+de ser opcional en cuanto Turnstile está activo**: sin él no hay dominio contra el que
+comparar, así que los formularios responden «mal configurada» y lo dicen en el log del
+servidor, en vez de aceptar tokens de donde sea.
+
+Tres decisiones más que conviene conocer antes de tocarlo:
 
 - El botón se deshabilita («Verificando…») mientras corre un desafío y no hay token. Tras un
   intento fallido el widget cambia su token gastado por uno nuevo, y enviar en ese hueco
   volvería con un error de captcha en lugar del resultado real — que después de una contraseña
   mal tecleada es la respuesta más desconcertante posible.
-- Si Turnstile no carga (bloqueador, red) o si Cloudflare no responde a la verificación, el
-  formulario se **abre**, no se cierra: una caída suya no debe dejar a nadie fuera de su propia
-  cuenta, no es un fallo que se pueda provocar desde fuera, y los límites por dirección y por
-  usuario siguen en pie.
+- Si Turnstile **no carga** en el navegador (bloqueador de contenido, red), el formulario se
+  abre y deja que el servidor conteste: un widget que no llegó a dibujarse no debe convertirse
+  en un botón deshabilitado para siempre sin nada en pantalla que lo explique.
+- Si **Cloudflare no responde** a la verificación en el servidor, en cambio, el intento se
+  rechaza. Dejarlo pasar suena a lo amable hasta que miras quién llega a esa rama: una
+  avalancha es justo lo que hace que estas llamadas expiren, así que el captcha se apagaría
+  solo en el momento en que más falta hace. El mensaje dice «vuelve a intentarlo en un
+  momento» y no culpa a la contraseña, para que una caída real no se lea como un error propio.
 
 #### Los límites de lo anterior
 

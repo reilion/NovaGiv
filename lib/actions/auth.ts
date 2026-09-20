@@ -114,7 +114,7 @@ export async function signIn(
   // Ahead of the lookup below on purpose. That one runs with the service-role
   // key and answers "does this username exist?", which is precisely the work a
   // bot should not get to make us do for free.
-  const captcha = await verifyTurnstile(formData.get(TURNSTILE_FIELD));
+  const captcha = await verifyTurnstile(formData.get(TURNSTILE_FIELD), "login");
   if (!captcha.ok) return { error: captcha.error };
 
   // Supabase Auth signs in by email, so the username has to be resolved first.
@@ -168,7 +168,7 @@ export async function signUp(
     if (!verdict.allowed) return { error: TOO_MANY_SIGN_UPS };
   }
 
-  const captcha = await verifyTurnstile(formData.get(TURNSTILE_FIELD));
+  const captcha = await verifyTurnstile(formData.get(TURNSTILE_FIELD), "register");
   if (!captcha.ok) return { error: captcha.error };
 
   if (await isUsernameTaken(username)) {

@@ -2,7 +2,11 @@
 
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 
-import { TURNSTILE_FIELD, TURNSTILE_SITE_KEY } from "@/lib/turnstile/config";
+import {
+  TURNSTILE_FIELD,
+  TURNSTILE_SITE_KEY,
+  type TurnstileAction,
+} from "@/lib/turnstile/config";
 
 interface TurnstileApi {
   render: (element: HTMLElement, options: Record<string, unknown>) => string;
@@ -64,8 +68,11 @@ function loadTurnstile(): Promise<TurnstileApi> {
 }
 
 interface TurnstileWidgetProps {
-  /** Which form this is, so the Cloudflare dashboard can tell them apart. */
-  action: "login" | "register";
+  /**
+   * Which form this is. It reaches the server action inside Cloudflare's
+   * verdict, which compares it with the action doing the verifying.
+   */
+  action: TurnstileAction;
   /**
    * Anything whose identity changes once per answer from the server — the
    * action state of the surrounding form is exactly that. Each answer means the

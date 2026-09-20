@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { MailCheck } from "lucide-react";
 
+import { TurnstileWidget } from "@/components/auth/turnstile-widget";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -14,11 +15,15 @@ import {
   USERNAME_MIN_LENGTH,
 } from "@/lib/account";
 import { signUp } from "@/lib/actions/auth";
+import { isTurnstileEnabled } from "@/lib/turnstile/config";
 import { cn } from "@/lib/utils";
 
 /** `warning` mirrors LoginForm's: shown above the fields, before anything is typed. */
 export function RegisterForm({ warning }: { warning?: string }) {
   const [state, formAction, isPending] = useActionState(signUp, undefined);
+
+  // Mirrors LoginForm's: ready from the start when there is no challenge.
+  const [captchaReady, setCaptchaReady] = useState(!isTurnstileEnabled);
 
   // Set only when the project requires confirming the address: the account is
   // created but there is no session yet, so there is nothing to redirect to.
@@ -125,10 +130,14 @@ export function RegisterForm({ warning }: { warning?: string }) {
             />
           </div>
 
+          {/* Mirrors LoginForm's: every answer the action gives is a new
+              object, and each one means the token just submitted is spent. */}
+          <TurnstileWidget action="register" resetOn={state} onReadyChange={setCaptchaReady} />
+
           {state?.error && <p className="text-sm text-destructive">{state.error}</p>}
 
-          <Button type="submit" disabled={isPending} className="mt-2 h-9">
-            {isPending ? "Creando cuenta…" : "Crear cuenta"}
+          <Button type="submit" disabled={isPending || !captchaReady} className="mt-2 h-9">
+            {isPending ? "Creando cuenta…" : captchaReady ? "Crear cuenta" : "Verificando…"}
           </Button>
         </form>
 

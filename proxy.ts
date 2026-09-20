@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 
+import { botGuard } from "@/lib/bot-guard";
 import {
   LAST_VISIT_COOKIE,
   LAST_VISIT_MAX_AGE,
@@ -10,6 +11,13 @@ import {
 import { updateSession } from "@/lib/supabase/middleware";
 
 export async function proxy(request: NextRequest) {
+  // First of all, and before any of the work below: a request that is going to
+  // be refused should not cost a round trip to the auth server, and a scraper
+  // should not be handed a visit cookie to keep. Returns null — every time, in
+  // development — for anything that looks like a person (see lib/bot-guard.ts).
+  const refusal = botGuard(request);
+  if (refusal) return refusal;
+
   // Before updateSession on purpose: it builds its response from the request,
   // and only what is already on the request by then reaches the page. That is
   // what lets the very request that opens a new visit render against the new

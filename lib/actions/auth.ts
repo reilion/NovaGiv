@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import {
@@ -10,9 +11,19 @@ import {
   validateUsername,
 } from "@/lib/account";
 import { findAccountByUsername, isUsernameTaken } from "@/lib/auth";
+import {
+  forgetRateLimit,
+  rateLimit,
+  retryAfterMessage,
+  type RateLimitRule,
+  type RateLimitVerdict,
+} from "@/lib/rate-limit";
+import { clientIp } from "@/lib/request-ip";
 import { getSiteUrl } from "@/lib/site-url";
 import { isSupabaseConfigured, NO_SUPABASE_ERROR } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
+import { TURNSTILE_FIELD } from "@/lib/turnstile/config";
+import { verifyTurnstile } from "@/lib/turnstile/verify";
 import { safeRedirectPath } from "@/lib/url";
 import type { AccountRole } from "@/types/account";
 
@@ -25,6 +36,40 @@ export interface AuthState {
 // Same message whether the username exists or the password is wrong: telling
 // the two apart would turn the form into a "does this account exist?" oracle.
 const BAD_CREDENTIALS = "Usuario o contraseña incorrectos.";
+
+/**
+ * Sign-in attempts one address may make. Loose enough that somebody who cannot
+ * remember which of their passwords it was still gets there.
+ */
+const SIGN_IN_PER_IP: RateLimitRule = { limit: 10, windowMs: 10 * 60_000 };
+
+/**
+ * And attempts against one username, whoever is making them. The per-address
+ * limit alone is worth little against a botnet: spread over enough addresses,
+ * every one of them stays inside its budget while the account underneath takes
+ * thousands of guesses. This is the half of the pair that notices that.
+ */
+const SIGN_IN_PER_USERNAME: RateLimitRule = { limit: 5, windowMs: 15 * 60_000 };
+
+/** New accounts one address may open. Real people need one, and rarely two. */
+const SIGN_UP_PER_IP: RateLimitRule = { limit: 5, windowMs: 60 * 60_000 };
+
+const TOO_MANY_SIGN_UPS =
+  "Se han creado demasiadas cuentas desde aquí. Vuelve a intentarlo más tarde.";
+
+/** The address the attempt came from, as far as the proxy in front will say. */
+async function callerAddress(): Promise<string | null> {
+  return clientIp(await headers());
+}
+
+/**
+ * The first budget that is spent, or null while there is room in all of them.
+ * Every one is counted before the answer is read: an attempt that trips the
+ * per-address limit is still an attempt against that username.
+ */
+function firstBlocked(verdicts: (RateLimitVerdict | null)[]): RateLimitVerdict | null {
+  return verdicts.find((verdict) => verdict !== null && !verdict.allowed) ?? null;
+}
 
 /** /admin is for admins; anyone else who asked for it lands on the catalog. */
 function destinationFor(role: AccountRole, next: string | null): string {
@@ -53,6 +98,25 @@ export async function signIn(
     return { error: "Ingresa tu usuario y contraseña." };
   }
 
+  // Counted before anything is looked up, and keyed twice: by address, and by
+  // the account being aimed at. Without an address — nothing in front of the
+  // app forwards one — only the second half applies, which still leaves the
+  // accounts themselves covered.
+  const address = await callerAddress();
+  const usernameKey = `signin:user:${username}`;
+
+  const blocked = firstBlocked([
+    address ? rateLimit(`signin:ip:${address}`, SIGN_IN_PER_IP) : null,
+    rateLimit(usernameKey, SIGN_IN_PER_USERNAME),
+  ]);
+  if (blocked) return { error: retryAfterMessage(blocked.retryAfterSeconds) };
+
+  // Ahead of the lookup below on purpose. That one runs with the service-role
+  // key and answers "does this username exist?", which is precisely the work a
+  // bot should not get to make us do for free.
+  const captcha = await verifyTurnstile(formData.get(TURNSTILE_FIELD));
+  if (!captcha.ok) return { error: captcha.error };
+
   // Supabase Auth signs in by email, so the username has to be resolved first.
   const account = await findAccountByUsername(username);
   if (!account) return { error: BAD_CREDENTIALS };
@@ -64,6 +128,12 @@ export async function signIn(
   });
 
   if (error) return { error: BAD_CREDENTIALS };
+
+  // Signed in, so the failed tries before this were somebody mistyping their
+  // own password: holding them against the account would be locking a person
+  // out of one they just proved is theirs. The per-address count stays — that
+  // one is not about the account.
+  forgetRateLimit(usernameKey);
 
   revalidatePath("/", "layout");
   redirect(destinationFor(account.role, typeof next === "string" ? next : null));
@@ -89,6 +159,17 @@ export async function signUp(
   if (password !== passwordConfirm) {
     return { error: "Las contraseñas no coinciden." };
   }
+
+  // After the form has been checked over, so a typo costs nobody part of their
+  // budget, and before the first round trip to the database.
+  const address = await callerAddress();
+  if (address) {
+    const verdict = rateLimit(`signup:ip:${address}`, SIGN_UP_PER_IP);
+    if (!verdict.allowed) return { error: TOO_MANY_SIGN_UPS };
+  }
+
+  const captcha = await verifyTurnstile(formData.get(TURNSTILE_FIELD));
+  if (!captcha.ok) return { error: captcha.error };
 
   if (await isUsernameTaken(username)) {
     return { error: "Ese nombre de usuario ya está en uso." };

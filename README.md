@@ -44,6 +44,9 @@ Copia [.env.example](.env.example) a `.env.local` y complétalo. Las obligatoria
 Opcionales: `SITE_URL` (dominio canónico: los enlaces que Supabase manda por correo, y
 también el `canonical`, el `og:url` y el sitemap de cada título — conviene fijarlo en
 producción),
+`NEXT_PUBLIC_TURNSTILE_SITE_KEY` + `TURNSTILE_SECRET_KEY` (el captcha de los formularios
+de cuenta), `BOT_PROTECTION` (`on`/`off` para el filtro del proxy) — las tres se explican en
+[Protección contra robots](#protección-contra-robots) —,
 `OKRU_COOKIE` (permite al importador ver canales privados/solo-amigos),
 `OKRU_PROFILE_URL` (perfil a sincronizar).
 
@@ -347,13 +350,94 @@ Detalle que vale la pena conocer: la política de `profiles` se acompaña de un
 `grant update (username)`. Un `with check` no puede saber *qué columnas* tocó un `update`, así
 que sin ese grant la política aceptaría `set role = 'admin'`.
 
+### Protección contra robots
+
+El catálogo es público y está para leerse; lo que no es gratis es leerlo entero a velocidad
+de máquina, ni probar contraseñas, ni inflar un contador. Cuatro piezas, todas en `lib/`, y
+ninguna con dependencias ni servicios externos salvo el captcha:
+
+| Pieza | Qué hace |
+|---|---|
+| [lib/bot-agents.ts](lib/bot-agents.ts) | Clasifica el `User-Agent`: `crawler` (buscadores y previsualizaciones de enlaces), `tool` (clientes HTTP, frameworks de scraping, escáneres, crawlers SEO comerciales) o `browser` |
+| [lib/rate-limit.ts](lib/rate-limit.ts) | Contador por ventana fija, en memoria del proceso que pregunta |
+| [lib/request-ip.ts](lib/request-ip.ts) | La dirección del visitante, según las cabeceras que llegan |
+| [lib/bot-guard.ts](lib/bot-guard.ts) | La política del proxy, construida con las tres anteriores |
+
+**En el proxy** ([proxy.ts](proxy.ts), antes que nada): un cliente que se anuncia como
+herramienta recibe `403`; el resto tiene presupuesto por dirección, 120 peticiones cada 30 s
+para un navegador y 60 para un crawler. Que el crawler tenga *menos* no es un error: uno que
+respeta el sitio se mueve muy por debajo de eso, y lo único que encarece el número más bajo es
+poner «Googlebot» en la cabecera para colarse. `/robots.txt`, `/sitemap.xml` y `/auth/` no se
+filtran nunca — los dos primeros son cómo un crawler averigua qué puede leer, y el tercero
+lleva los enlaces que Supabase manda por correo, que abre el escáner del proveedor antes que
+nadie.
+
+**En los formularios de cuenta** ([lib/actions/auth.ts](lib/actions/auth.ts)): el límite se
+cuenta antes de mirar nada, y el captcha se verifica antes del *lookup* de usuario, que corre
+con la clave de servicio y responde «¿existe esta cuenta?» — trabajo que un bot no debería
+conseguir que hagamos.
+
+- Entrar: 10 intentos por dirección cada 10 min **y** 5 por usuario cada 15 min. El segundo es
+  el que importa contra una botnet, donde cada dirección se mantiene dentro de su presupuesto
+  mientras la cuenta de abajo recibe miles de intentos. Un inicio de sesión correcto borra el
+  contador de ese usuario: los fallos previos eran alguien tecleando mal su propia contraseña.
+- Registrarse: 5 cuentas por dirección cada hora.
+
+**En las vistas** ([lib/actions/views.ts](lib/actions/views.ts)): 40 por dirección cada 10 min,
+y los ids que no son UUID no llegan a la base de datos. La marca de `sessionStorage` del
+reproductor vive en el navegador, así que es una comodidad, no una regla.
+
+#### Cloudflare Turnstile
+
+El captcha de `/login` y `/register`. Sin `NEXT_PUBLIC_TURNSTILE_SITE_KEY` no se dibuja nada y
+los formularios funcionan como antes —eso es lo que mantiene `pnpm dev` utilizable sin cuenta
+de Cloudflare—; los límites de arriba no dependen de él y están siempre activos.
+
+Se verifica aquí y no en Supabase (que también sabe hacerlo, en *Authentication → Attack
+Protection*) por el orden explicado arriba, y por eso **hay que dejar el de Supabase apagado**:
+un token se canjea una sola vez y si los dos lo canjean, uno pierde siempre.
+
+Dos decisiones que conviene conocer antes de tocarlo:
+
+- El botón se deshabilita («Verificando…») mientras corre un desafío y no hay token. Tras un
+  intento fallido el widget cambia su token gastado por uno nuevo, y enviar en ese hueco
+  volvería con un error de captcha en lugar del resultado real — que después de una contraseña
+  mal tecleada es la respuesta más desconcertante posible.
+- Si Turnstile no carga (bloqueador, red) o si Cloudflare no responde a la verificación, el
+  formulario se **abre**, no se cierra: una caída suya no debe dejar a nadie fuera de su propia
+  cuenta, no es un fallo que se pueda provocar desde fuera, y los límites por dirección y por
+  usuario siguen en pie.
+
+#### Los límites de lo anterior
+
+Vale la pena tenerlos claros, porque ninguno es un agujero tapable desde este repositorio:
+
+- **El contador vive en memoria.** Con un solo servidor es la foto completa; repartido entre
+  varias instancias, una avalancha multiplica el presupuesto por las que toque. Todo pasa por
+  `rateLimit()`, así que el día que haga falta compartirlo (Redis, o una tabla en Supabase) ese
+  archivo es el único que cambia.
+- **El `User-Agent` es una cabecera que cualquiera escribe.** No es una frontera de seguridad:
+  sirve para el grueso del tráfico que no se molesta en mentir, y quien miente cae igualmente
+  en un presupuesto.
+- **`x-forwarded-for` se puede falsificar** si nada lo reescribe por delante. `cf-connecting-ip`
+  y `x-real-ip` se consultan primero justamente por eso. Si delante hay Cloudflare o Vercel,
+  está cubierto.
+- **Hace falta que el proxy reenvíe la dirección.** Si no lo hace, todo llega pareciendo venir
+  del propio servidor; en ese caso el presupuesto se **salta** en lugar de compartirse, que es
+  lo contrario de rate-limitar el sitio entero por error.
+
+Lo que sí es una frontera real sigue siendo RLS: nada de esto protege un dato, protege un
+volumen.
+
 ### Contadores
 
 Ambos son la excepción a "el sitio público no escribe", y cada uno por una vía distinta:
 
 - **Vistas** — `register_video_view`, `security definer`, ejecutable por anónimos. Una vista
   es "abierto en el reproductor" (el iframe de ok.ru nunca informa si se reprodujo de verdad),
-  y el cliente la marca en `sessionStorage` para contarla una sola vez por sesión.
+  y el cliente la marca en `sessionStorage` para contarla una sola vez por sesión. Esa marca
+  vive en el navegador, así que la acción además tiene presupuesto propio por dirección
+  (ver [Protección contra robots](#protección-contra-robots)).
 - **Me gusta** — `toggle_video_like`, solo para sesiones iniciadas: un me gusta anónimo no se
   podría deshacer y volvería a contarse desde el siguiente navegador. Decide alta o baja y lee
   el nuevo total dentro de una transacción, así que dos personas votando a la vez no se pasan

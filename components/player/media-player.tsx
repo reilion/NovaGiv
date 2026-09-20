@@ -374,14 +374,18 @@ export function MediaPlayer({
               {streamRange}
             </Badge>
           )}
-          <Badge
-            variant="secondary"
-            className="gap-1"
-            title={episodic ? "Suma de las vistas de todos los episodios" : undefined}
-          >
-            <Eye className="size-3" />
-            {formatViewsLabel(totalViews)}
-          </Badge>
+          {/* Absent, not zero: the counters are withheld from anyone who may
+              not see them — see VIEW_COUNTS_ADMIN_ONLY. */}
+          {totalViews !== undefined && (
+            <Badge
+              variant="secondary"
+              className="gap-1"
+              title={episodic ? "Suma de las vistas de todos los episodios" : undefined}
+            >
+              <Eye className="size-3" />
+              {formatViewsLabel(totalViews)}
+            </Badge>
+          )}
           {totalLikes > 0 && (
             <Badge
               variant="secondary"
@@ -482,13 +486,15 @@ export function MediaPlayer({
                         )}
                       </span>
                       <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
-                        <span
-                          className="flex items-center gap-1"
-                          title={formatViewsLabel(episode.views ?? 0)}
-                        >
-                          <Eye className="size-3" />
-                          {formatViews(episode.views ?? 0)}
-                        </span>
+                        {episode.views !== undefined && (
+                          <span
+                            className="flex items-center gap-1"
+                            title={formatViewsLabel(episode.views)}
+                          >
+                            <Eye className="size-3" />
+                            {formatViews(episode.views)}
+                          </span>
+                        )}
                         {(episode.likes ?? 0) > 0 && (
                           <span
                             className="flex items-center gap-1"

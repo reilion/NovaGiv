@@ -100,9 +100,9 @@ export function MediaCard({ item }: MediaCardProps) {
         {/* Hidden at zero: a catalog that has just gone live would otherwise
             show a "0" on every poster. Both counters share one pill so a liked
             title doesn't grow a third badge over the artwork. */}
-        {(views > 0 || likes > 0) && (
+        {((views ?? 0) > 0 || likes > 0) && (
           <div className="absolute bottom-2 left-2 flex items-center gap-2 rounded-md bg-black/60 px-1.5 py-0.5 text-[11px] text-foreground backdrop-blur-sm">
-            {views > 0 && (
+            {views !== undefined && views > 0 && (
               <span className="flex items-center gap-1" title={formatViewsLabel(views)}>
                 <Eye className="size-3" />
                 {formatViews(views)}

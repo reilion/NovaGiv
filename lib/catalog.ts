@@ -3,6 +3,7 @@ import "server-only";
 import { cache } from "react";
 import { cookies } from "next/headers";
 
+import { canSeeViewCounts } from "@/lib/auth";
 import { episodeParam } from "@/lib/episode-param";
 import { LAST_VISIT_COOKIE, newSince } from "@/lib/last-visit";
 import {
@@ -81,7 +82,7 @@ interface SearchMediaResult {
   yearCounts: CatalogYearCount[];
 }
 
-function mapRow(row: CatalogRow): CatalogItem {
+function mapRow(row: CatalogRow, showViews: boolean): CatalogItem {
   return {
     id: row.id,
     title: row.title,
@@ -98,7 +99,8 @@ function mapRow(row: CatalogRow): CatalogItem {
     firstStreamedAt: row.firstStreamedAt ?? undefined,
     lastStreamedAt: row.lastStreamedAt ?? undefined,
     episodeCount: row.episodeCount,
-    views: row.views,
+    // Left out entirely rather than drawn and hidden — see VIEW_COUNTS_ADMIN_ONLY.
+    views: showViews ? row.views : undefined,
     likes: row.likes,
     matchedEpisodes: row.matchedEpisodes,
     matchedEpisodeRef: row.matchedEpisodeRef ?? undefined,
@@ -106,7 +108,7 @@ function mapRow(row: CatalogRow): CatalogItem {
 }
 
 /** A mock item shaped like a catalog row — the demo catalog's half of the swap. */
-function mockRow(item: MediaItem, search: string): CatalogItem {
+function mockRow(item: MediaItem, search: string, showViews: boolean): CatalogItem {
   const matches = matchingEpisodes(item, search);
 
   return {
@@ -123,7 +125,7 @@ function mockRow(item: MediaItem, search: string): CatalogItem {
     firstStreamedAt: item.firstStreamedAt,
     lastStreamedAt: item.lastStreamedAt,
     episodeCount: item.episodes?.length ?? 0,
-    views: totalViewsOf(item),
+    views: showViews ? totalViewsOf(item) : undefined,
     likes: totalLikesOf(item),
     matchedEpisodes: matches.length,
     matchedEpisodeRef: matches[0] ? episodeParam(matches[0]) : undefined,
@@ -214,6 +216,7 @@ export async function getCatalogPage(
   offset = 0
 ): Promise<CatalogPage> {
   const start = Math.max(0, Math.trunc(offset));
+  const showViews = await canSeeViewCounts();
 
   if (!isSupabaseConfigured) {
     const all = filterAndSortMedia(
@@ -222,7 +225,7 @@ export async function getCatalogPage(
     );
     const rows = all
       .slice(start, start + CATALOG_PAGE_SIZE)
-      .map((item) => mockRow(item, filters.search));
+      .map((item) => mockRow(item, filters.search, showViews));
     const page = pageFrom(rows, all.length, start, countByYear(all));
     return { ...page, items: await withViewerState(page.items) };
   }
@@ -254,7 +257,12 @@ export async function getCatalogPage(
   }
 
   const result = data as SearchMediaResult;
-  const page = pageFrom(result.items.map(mapRow), result.total, start, result.yearCounts);
+  const page = pageFrom(
+    result.items.map((row) => mapRow(row, showViews)),
+    result.total,
+    start,
+    result.yearCounts
+  );
 
   return { ...page, items: await withViewerState(page.items) };
 }

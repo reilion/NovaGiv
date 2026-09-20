@@ -1,8 +1,11 @@
 import "server-only";
 
+import { cache } from "react";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
+import { VIEW_COUNTS_ADMIN_ONLY } from "@/lib/constants";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
@@ -13,8 +16,14 @@ function toRole(value: unknown): AccountRole {
   return value === "admin" ? "admin" : "user";
 }
 
-/** The signed-in account (auth user + its profile row), or null for a visitor. */
-export async function getAccount(): Promise<Account | null> {
+/**
+ * The signed-in account (auth user + its profile row), or null for a visitor.
+ *
+ * Request-cached: the header asks on every page, and so does `canSeeViewCounts`
+ * below — one round trip to the auth server per request rather than one per
+ * caller.
+ */
+export const getAccount = cache(async function getAccount(): Promise<Account | null> {
   // No project, no accounts. Every page has a header, and the header asks this
   // on every request, so answering "nobody is signed in" is what keeps the demo
   // catalog browsable instead of throwing inside a client built on two
@@ -44,7 +53,28 @@ export async function getAccount(): Promise<Account | null> {
     role: toRole(profile?.role),
     createdAt: profile?.created_at ?? user.created_at ?? null,
   };
-}
+});
+
+/**
+ * Whether the person browsing may see the view counters — see
+ * VIEW_COUNTS_ADMIN_ONLY, which is the flag this exists to serve.
+ *
+ * The answer is what decides whether the numbers are put in the page at all
+ * (lib/catalog.ts, lib/queries.ts), not just whether they are drawn: hidden has
+ * to mean hidden, including from whoever reads the page source.
+ */
+export const canSeeViewCounts = cache(async function canSeeViewCounts(): Promise<boolean> {
+  if (!VIEW_COUNTS_ADMIN_ONLY) return true;
+
+  // Almost all of the catalog's traffic is signed out, and this runs on every
+  // page of it, including each one the infinite scroll asks for. Somebody with
+  // no session cookie cannot be an admin, and the cookie jar answers that
+  // without a round trip — the same short-circuit the proxy makes.
+  const cookieStore = await cookies();
+  if (!cookieStore.getAll().some(({ name }) => name.startsWith("sb-"))) return false;
+
+  return (await getAccount())?.role === "admin";
+});
 
 /**
  * Every admin action requires an admin account; RLS enforces it too (see

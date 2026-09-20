@@ -77,6 +77,9 @@ export default async function OpenGraphImage({ params }: { params: Promise<{ slu
   const poster = await loadPoster(item.posterUrl);
   const streamRange = formatStreamRange(item.firstStreamedAt, item.lastStreamedAt);
   const episodeCount = item.episodes?.length ?? 0;
+  // Undefined for anyone who may not see the counters, which for a link being
+  // unfurled by a crawler is everyone — see VIEW_COUNTS_ADMIN_ONLY.
+  const views = totalViewsOf(item);
 
   const facts = [
     MEDIA_TYPE_LABELS[item.type],
@@ -153,9 +156,11 @@ export default async function OpenGraphImage({ params }: { params: Promise<{ slu
             <div style={{ fontSize: 28, color: COLORS.muted }}>{`Emitido ${streamRange}`}</div>
           )}
 
-          <div style={{ fontSize: 26, color: COLORS.muted }}>
-            {formatViewsLabel(totalViewsOf(item))}
-          </div>
+          {/* A shared link is the most public surface there is, so it only
+              carries the counter when the viewer may see it at all. */}
+          {views !== undefined && (
+            <div style={{ fontSize: 26, color: COLORS.muted }}>{formatViewsLabel(views)}</div>
+          )}
         </div>
       </div>
     ),

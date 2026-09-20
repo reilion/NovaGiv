@@ -33,6 +33,17 @@ export const MONTHS: { value: string; label: string }[] = [
 ];
 
 /**
+ * Temporary: while this is true, the view counters are drawn for admins only —
+ * on the cards, in the player, in its episode list and in the preview image a
+ * shared link produces. Likes are unaffected.
+ *
+ * Flip it to false to give them back to everybody; that is the whole switch,
+ * there is nothing else to undo. The numbers keep being counted either way, so
+ * nothing is lost in the meantime.
+ */
+export const VIEW_COUNTS_ADMIN_ONLY = true;
+
+/**
  * How many ok.ru channels /admin/import syncs in one run. ok.ru serves the
  * profile's channel grid 20 at a time and only a real browser can ask for the
  * rest, so the panel sticks to the most recent ones — which is where new

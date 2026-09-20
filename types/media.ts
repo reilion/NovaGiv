@@ -101,8 +101,12 @@ export interface CatalogItem {
   lastStreamedAt?: string;
   /** Videos in the collection; 0 for a movie, karaoke or especial. */
   episodeCount: number;
-  /** Every video of the collection added up — what `totalViewsOf` derives. */
-  views: number;
+  /**
+   * Every video of the collection added up — what `totalViewsOf` derives.
+   * Undefined when the viewer may not see it (see VIEW_COUNTS_ADMIN_ONLY): the
+   * number is left out of the page rather than drawn and hidden.
+   */
+  views?: number;
   /** Same for likes — see `totalLikesOf`. */
   likes: number;
   /** Episodes matching the active search; 0 when nothing is being searched. */
@@ -228,10 +232,33 @@ export const SORT_OPTION_LABELS: Record<SortOption, string> = {
  * Views of the whole collection: the sum of every video it holds. Derived on
  * read rather than stored, so it can never drift from the per-video counters
  * after an episode is moved into another collection.
+ *
+ * Undefined means "not for this viewer", which is a different thing from zero:
+ * a collection nobody has opened yet still says "0 vistas" to an admin, while
+ * one whose counters were withheld says nothing at all. `withoutViewCounts`
+ * below is what produces that state.
  */
-export function totalViewsOf(item: MediaItem): number {
-  const episodeViews = (item.episodes ?? []).reduce((sum, episode) => sum + (episode.views ?? 0), 0);
-  return (item.views ?? 0) + episodeViews;
+export function totalViewsOf(item: MediaItem): number | undefined {
+  const known = [item.views, ...(item.episodes ?? []).map((episode) => episode.views)].filter(
+    (value): value is number => value !== undefined
+  );
+
+  if (known.length === 0) return undefined;
+
+  return known.reduce((sum, value) => sum + value, 0);
+}
+
+/**
+ * The same collection with every view counter taken off it — see
+ * VIEW_COUNTS_ADMIN_ONLY. Applied where the rows are read rather than where
+ * they are drawn, so the numbers never reach the browser in the first place.
+ */
+export function withoutViewCounts(item: MediaItem): MediaItem {
+  return {
+    ...item,
+    views: undefined,
+    episodes: item.episodes?.map((episode) => ({ ...episode, views: undefined })),
+  };
 }
 
 /** Likes of the whole collection: same reasoning as `totalViewsOf`. */

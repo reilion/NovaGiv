@@ -363,6 +363,18 @@ Ambos son la excepción a "el sitio público no escribe", y cada uno por una ví
 Ninguno revalida el catálogo: mover un número no justifica re-renderizar la grilla que hay
 detrás del reproductor abierto. Las tarjetas se ponen al día en la siguiente carga.
 
+> **Las vistas están ocultas para el público, temporalmente.** Lo decide una sola constante,
+> `VIEW_COUNTS_ADMIN_ONLY` en [lib/constants.ts](lib/constants.ts): mientras sea `true` solo
+> las ve un admin, en las tarjetas, en el reproductor, en su lista de episodios y en la imagen
+> de vista previa que genera un enlace compartido. Ponla en `false` para devolvérselas a todo
+> el mundo; no hay nada más que deshacer.
+>
+> Se quitan al **leer** las filas (`canSeeViewCounts()` en [lib/auth.ts](lib/auth.ts)), no al
+> pintarlas, así que tampoco viajan en el HTML: en el payload queda `"views":"$undefined"`.
+> Para el tráfico anónimo eso no cuesta ni una consulta —sin cookie de sesión no hay admin
+> posible, y la cookie responde sola—. Los me gusta no cambian, y las vistas se siguen
+> contando igual: al reactivarlas estarán al día.
+
 ---
 
 ## Revisión de UX y producto — 17 de septiembre de 2026

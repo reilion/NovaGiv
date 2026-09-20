@@ -3,11 +3,12 @@ import "server-only";
 import { cache } from "react";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
+import { canSeeViewCounts } from "@/lib/auth";
 import { findEpisodeByParam } from "@/lib/episode-param";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
 import { MOCK_MEDIA, MOCK_STREAMER } from "@/lib/mock-data";
-import type { Episode, MediaItem } from "@/types/media";
+import { withoutViewCounts, type Episode, type MediaItem } from "@/types/media";
 import type { StreamerProfile } from "@/types/streamer";
 
 /**
@@ -142,7 +143,14 @@ async function getPublishedItemsByIds(ids: string[]): Promise<Map<string, MediaI
     return new Map();
   }
 
-  return new Map((data as MediaItemRow[]).map((row) => [row.id, mapMediaItem(row)]));
+  const visible = await canSeeViewCounts();
+
+  return new Map(
+    (data as MediaItemRow[]).map((row) => {
+      const item = mapMediaItem(row);
+      return [row.id, visible ? item : withoutViewCounts(item)];
+    })
+  );
 }
 
 /**
@@ -222,7 +230,12 @@ export const getMediaBySlug = cache(async function getMediaBySlug(
     return null;
   }
 
-  return mapMediaItem(data as MediaItemRow);
+  // The one public read of a whole collection — the player, the metadata and
+  // the preview image all come through here — so it is also where the view
+  // counters are withheld. See canSeeViewCounts.
+  const item = mapMediaItem(data as MediaItemRow);
+
+  return (await canSeeViewCounts()) ? item : withoutViewCounts(item);
 });
 
 export interface SitemapEntry {

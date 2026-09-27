@@ -4,6 +4,7 @@ import {
   useEffect,
   useEffectEvent,
   useMemo,
+  useRef,
   useState,
   type MouseEvent,
   type ReactNode,
@@ -176,9 +177,28 @@ export function MediaPlayer({
     autoplay: false,
   });
   const [episodeQuery, setEpisodeQuery] = useState("");
+  const episodeListRef = useRef<HTMLDivElement>(null);
 
   const activeEpisode =
     (item.episodes ?? []).find((episode) => episode.id === active.id) ?? item.episodes?.[0];
+
+  // Keep the playing episode visible inside the list's own scroll. Moving the
+  // list's scrollTop by hand, not `scrollIntoView`, so the page or the modal
+  // around it doesn't jump along.
+  useEffect(() => {
+    const list = episodeListRef.current;
+    const current = list?.querySelector<HTMLElement>('[aria-current="true"]');
+    if (!list || !current) return;
+
+    const listBox = list.getBoundingClientRect();
+    const itemBox = current.getBoundingClientRect();
+    if (itemBox.top < listBox.top) {
+      list.scrollTop += itemBox.top - listBox.top;
+    } else if (itemBox.bottom > listBox.bottom) {
+      list.scrollTop += itemBox.bottom - listBox.bottom;
+    }
+  }, [activeEpisode?.id]);
+
   const rawEmbedUrl = episodic ? activeEpisode?.okRuEmbedUrl : item.okRuEmbedUrl;
   const baseEmbedUrl = rawEmbedUrl ? toOkRuEmbedUrl(rawEmbedUrl) : undefined;
   const embedUrl =
@@ -434,83 +454,90 @@ export function MediaPlayer({
               Ningún episodio coincide con «{episodeQuery.trim()}».
             </p>
           ) : (
-            visibleSeasons.map((season) => (
-              <div key={season.seasonNumber} className="flex flex-col gap-1.5">
-                {seasons.length > 1 && (
-                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Temporada {season.seasonNumber}
-                  </p>
-                )}
-                {/* Wide layouts fit several episodes per row, so the list stays
+            // Its own scroll, so a long channel doesn't push the page (or the
+            // modal) miles down; the heading and search above stay in view.
+            <div
+              ref={episodeListRef}
+              className="-mr-2 flex max-h-96 flex-col gap-4 overflow-y-auto overscroll-contain pr-2"
+            >
+              {visibleSeasons.map((season) => (
+                <div key={season.seasonNumber} className="flex flex-col gap-1.5">
+                  {seasons.length > 1 && (
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Temporada {season.seasonNumber}
+                    </p>
+                  )}
+                  {/* Wide layouts fit several episodes per row, so the list stays
                     short even for a channel with 200 streams. */}
-                <div className="grid gap-1.5 @2xl:grid-cols-2 @5xl:grid-cols-3">
-                  {season.episodes.map((episode) => (
-                    <a
-                      key={episode.id}
-                      href={`?ep=${episodeParam(episode)}`}
-                      onClick={(event) => selectEpisode(event, episode)}
-                      aria-current={episode.id === activeEpisode?.id ? "true" : undefined}
-                      className={cn(
-                        "flex items-center gap-2 rounded-lg px-2 py-2 text-left text-sm transition-colors hover:bg-accent",
-                        episode.id === activeEpisode?.id && "bg-primary/15 text-primary"
-                      )}
-                    >
-                      {showThumbnails ? (
-                        <span className="relative aspect-video w-20 shrink-0 overflow-hidden rounded-md bg-muted">
-                          {episode.thumbnailUrl ? (
-                            <Image
-                              src={episode.thumbnailUrl}
-                              alt=""
-                              fill
-                              sizes="80px"
-                              className="object-cover"
-                            />
-                          ) : (
-                            <span className="flex size-full items-center justify-center">
-                              <PlayCircle className="size-4 text-muted-foreground" />
+                  <div className="grid gap-1.5 @2xl:grid-cols-2 @5xl:grid-cols-3">
+                    {season.episodes.map((episode) => (
+                      <a
+                        key={episode.id}
+                        href={`?ep=${episodeParam(episode)}`}
+                        onClick={(event) => selectEpisode(event, episode)}
+                        aria-current={episode.id === activeEpisode?.id ? "true" : undefined}
+                        className={cn(
+                          "flex items-center gap-2 rounded-lg px-2 py-2 text-left text-sm transition-colors hover:bg-accent",
+                          episode.id === activeEpisode?.id && "bg-primary/15 text-primary"
+                        )}
+                      >
+                        {showThumbnails ? (
+                          <span className="relative aspect-video w-20 shrink-0 overflow-hidden rounded-md bg-muted">
+                            {episode.thumbnailUrl ? (
+                              <Image
+                                src={episode.thumbnailUrl}
+                                alt=""
+                                fill
+                                sizes="80px"
+                                className="object-cover"
+                              />
+                            ) : (
+                              <span className="flex size-full items-center justify-center">
+                                <PlayCircle className="size-4 text-muted-foreground" />
+                              </span>
+                            )}
+                          </span>
+                        ) : (
+                          <PlayCircle className="size-4 shrink-0" />
+                        )}
+
+                        <span className="flex min-w-0 flex-1 flex-col">
+                          <span className="truncate">
+                            {episode.episodeNumber}. {episode.title}
+                          </span>
+                          {episode.streamedAt && (
+                            <span className="truncate text-xs text-muted-foreground">
+                              {formatStreamDate(episode.streamedAt)}
                             </span>
                           )}
                         </span>
-                      ) : (
-                        <PlayCircle className="size-4 shrink-0" />
-                      )}
-
-                      <span className="flex min-w-0 flex-1 flex-col">
-                        <span className="truncate">
-                          {episode.episodeNumber}. {episode.title}
+                        <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
+                          {episode.views !== undefined && (
+                            <span
+                              className="flex items-center gap-1"
+                              title={formatViewsLabel(episode.views)}
+                            >
+                              <Eye className="size-3" />
+                              {formatViews(episode.views)}
+                            </span>
+                          )}
+                          {(episode.likes ?? 0) > 0 && (
+                            <span
+                              className="flex items-center gap-1"
+                              title={formatLikesLabel(episode.likes ?? 0)}
+                            >
+                              <Heart className="size-3" />
+                              {formatViews(episode.likes ?? 0)}
+                            </span>
+                          )}
+                          {episode.duration && <span>{episode.duration}</span>}
                         </span>
-                        {episode.streamedAt && (
-                          <span className="truncate text-xs text-muted-foreground">
-                            {formatStreamDate(episode.streamedAt)}
-                          </span>
-                        )}
-                      </span>
-                      <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
-                        {episode.views !== undefined && (
-                          <span
-                            className="flex items-center gap-1"
-                            title={formatViewsLabel(episode.views)}
-                          >
-                            <Eye className="size-3" />
-                            {formatViews(episode.views)}
-                          </span>
-                        )}
-                        {(episode.likes ?? 0) > 0 && (
-                          <span
-                            className="flex items-center gap-1"
-                            title={formatLikesLabel(episode.likes ?? 0)}
-                          >
-                            <Heart className="size-3" />
-                            {formatViews(episode.likes ?? 0)}
-                          </span>
-                        )}
-                        {episode.duration && <span>{episode.duration}</span>}
-                      </span>
-                    </a>
-                  ))}
+                      </a>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ))
+              ))}
+            </div>
           )}
         </div>
       )}

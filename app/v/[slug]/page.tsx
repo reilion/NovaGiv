@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 
-import { MediaPlayer } from "@/components/player/media-player";
+import { PlayerPage } from "@/components/player/player-page";
 import { buttonVariants } from "@/components/ui/button";
 import { loadMediaView } from "@/lib/media-view";
 import { getMediaBySlug } from "@/lib/queries";
@@ -69,22 +69,20 @@ export default async function MediaPage({ params, searchParams }: MediaPageProps
   const { item, likedVideoIds, savedVideoIds, initialEpisodeId } = await loadMediaView(slug, ep);
 
   return (
-    <div className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 sm:px-6 lg:px-8">
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <Link href="/" className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "-ml-2")}>
-          <ArrowLeft className="size-4" />
-          Volver al catálogo
-        </Link>
-        <span className="font-heading text-sm font-medium text-muted-foreground">NovaGiv</span>
-      </div>
-
-      <MediaPlayer
-        item={item}
-        likedVideoIds={likedVideoIds}
-        savedVideoIds={savedVideoIds}
-        initialEpisodeId={initialEpisodeId}
-        variant="page"
-      />
-    </div>
+    <PlayerPage
+      item={item}
+      likedVideoIds={likedVideoIds}
+      savedVideoIds={savedVideoIds}
+      initialEpisodeId={initialEpisodeId}
+      toolbar={
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <Link href="/" className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "-ml-2")}>
+            <ArrowLeft className="size-4" />
+            Volver al catálogo
+          </Link>
+          <span className="font-heading text-sm font-medium text-muted-foreground">NovaGiv</span>
+        </div>
+      }
+    />
   );
 }

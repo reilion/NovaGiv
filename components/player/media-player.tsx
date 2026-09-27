@@ -25,7 +25,6 @@ import { WatchLaterButton } from "@/components/player/watch-later-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { registerVideoView } from "@/lib/actions/views";
 import { episodeParam } from "@/lib/episode-param";
 import { filterEpisodes } from "@/lib/media-filter";
@@ -43,9 +42,6 @@ import {
 
 /** One key per video already counted in this session — see `useRegisterView`. */
 const VIEW_STORAGE_PREFIX = "novagiv:viewed:";
-
-/** What the picture is capped at on the full page; the dialog passes its own. */
-const PAGE_VIDEO_CLASS = "max-h-[75vh] max-w-[calc(75vh*16/9)]";
 
 /** Below this, the list is short enough to read at a glance. */
 const EPISODE_SEARCH_THRESHOLD = 8;
@@ -146,9 +142,9 @@ interface MediaPlayerProps {
    * lets the document scroll, and titles the collection with an `h1`.
    */
   variant: "page" | "modal";
-  /** Extra control beside the like button — the dialog's size menu. */
+  /** Extra control beside the like button — the size menu. */
   headerActions?: ReactNode;
-  /** Caps the picture. The dialog passes the size the viewer picked. */
+  /** Caps the picture: the size the viewer picked — see player-size.tsx. */
   videoClassName?: string;
 }
 
@@ -178,6 +174,7 @@ export function MediaPlayer({
   });
   const [episodeQuery, setEpisodeQuery] = useState("");
   const episodeListRef = useRef<HTMLDivElement>(null);
+  const modalScrollRef = useRef<HTMLDivElement>(null);
 
   const activeEpisode =
     (item.episodes ?? []).find((episode) => episode.id === active.id) ?? item.episodes?.[0];
@@ -190,10 +187,7 @@ export function MediaPlayer({
     const current = list?.querySelector<HTMLElement>('[aria-current="true"]');
     if (!list || !current) return;
 
-    const scroller =
-      variant === "modal"
-        ? list.closest<HTMLElement>('[data-slot="scroll-area-viewport"]')
-        : list;
+    const scroller = variant === "modal" ? modalScrollRef.current : list;
     if (!scroller) return;
 
     const scrollerBox = scroller.getBoundingClientRect();
@@ -286,12 +280,7 @@ export function MediaPlayer({
 
   const video = (
     <div className="shrink-0 bg-black">
-      <div
-        className={cn(
-          "relative mx-auto aspect-video w-full",
-          videoClassName ?? (variant === "page" ? PAGE_VIDEO_CLASS : undefined)
-        )}
-      >
+      <div className={cn("relative mx-auto aspect-video w-full", videoClassName)}>
         {embedUrl ? (
           <iframe
             key={embedUrl}
@@ -558,10 +547,16 @@ export function MediaPlayer({
   if (variant === "modal") {
     // One column: the episode list sits under the video so the picture gets the
     // full width of the modal instead of sharing it with a sidebar.
+    //
+    // A plain overflow box, not ScrollArea: its viewport is `height: 100%`,
+    // which never resolves against a parent capped only by max-height, so it
+    // grew to fit everything and the bottom of the list was clipped away.
     return (
       <div className="flex max-h-[92vh] flex-col overflow-hidden">
         {video}
-        <ScrollArea className="min-h-0 flex-1">{details}</ScrollArea>
+        <div ref={modalScrollRef} className="min-h-0 flex-1 overflow-y-auto">
+          {details}
+        </div>
       </div>
     );
   }

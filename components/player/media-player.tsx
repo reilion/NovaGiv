@@ -182,22 +182,28 @@ export function MediaPlayer({
   const activeEpisode =
     (item.episodes ?? []).find((episode) => episode.id === active.id) ?? item.episodes?.[0];
 
-  // Keep the playing episode visible inside the list's own scroll. Moving the
-  // list's scrollTop by hand, not `scrollIntoView`, so the page or the modal
-  // around it doesn't jump along.
+  // Keep the playing episode visible in whatever scrolls the list: its own box
+  // on the page, the dialog's scroll area in the modal. Moving that scrollTop by
+  // hand, not `scrollIntoView`, so nothing around it jumps along.
   useEffect(() => {
     const list = episodeListRef.current;
     const current = list?.querySelector<HTMLElement>('[aria-current="true"]');
     if (!list || !current) return;
 
-    const listBox = list.getBoundingClientRect();
+    const scroller =
+      variant === "modal"
+        ? list.closest<HTMLElement>('[data-slot="scroll-area-viewport"]')
+        : list;
+    if (!scroller) return;
+
+    const scrollerBox = scroller.getBoundingClientRect();
     const itemBox = current.getBoundingClientRect();
-    if (itemBox.top < listBox.top) {
-      list.scrollTop += itemBox.top - listBox.top;
-    } else if (itemBox.bottom > listBox.bottom) {
-      list.scrollTop += itemBox.bottom - listBox.bottom;
+    if (itemBox.top < scrollerBox.top) {
+      scroller.scrollTop += itemBox.top - scrollerBox.top;
+    } else if (itemBox.bottom > scrollerBox.bottom) {
+      scroller.scrollTop += itemBox.bottom - scrollerBox.bottom;
     }
-  }, [activeEpisode?.id]);
+  }, [activeEpisode?.id, variant]);
 
   const rawEmbedUrl = episodic ? activeEpisode?.okRuEmbedUrl : item.okRuEmbedUrl;
   const baseEmbedUrl = rawEmbedUrl ? toOkRuEmbedUrl(rawEmbedUrl) : undefined;
@@ -454,11 +460,16 @@ export function MediaPlayer({
               Ningún episodio coincide con «{episodeQuery.trim()}».
             </p>
           ) : (
-            // Its own scroll, so a long channel doesn't push the page (or the
-            // modal) miles down; the heading and search above stay in view.
+            // On the page, its own scroll, so a long channel doesn't push the
+            // document miles down. Not in the modal: everything under the video
+            // already scrolls there, and at the big sizes that area is shorter
+            // than this box would be, which left its bottom out of reach.
             <div
               ref={episodeListRef}
-              className="-mr-2 flex max-h-96 flex-col gap-4 overflow-y-auto overscroll-contain pr-2"
+              className={cn(
+                "flex flex-col gap-4",
+                variant === "page" && "-mr-2 max-h-96 overflow-y-auto pr-2"
+              )}
             >
               {visibleSeasons.map((season) => (
                 <div key={season.seasonNumber} className="flex flex-col gap-1.5">

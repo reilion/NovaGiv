@@ -23,6 +23,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { extractEpisodeToCollection } from "@/lib/actions/channel-collections";
 import type { ChannelSiblingEpisode } from "@/lib/actions/channel-collections";
 import { upsertMediaItem } from "@/lib/actions/media";
+import { SELECTABLE_MEDIA_TYPES } from "@/lib/constants";
 import { formatStreamDate, formatStreamRange, parseStreamTitle } from "@/lib/stream-date";
 import { slugify } from "@/lib/text";
 import { cn } from "@/lib/utils";
@@ -65,7 +66,6 @@ function nextDraftKey() {
   return `draft-${draftKeySeq}`;
 }
 
-const MEDIA_TYPES = Object.keys(MEDIA_TYPE_LABELS) as MediaType[];
 
 export function MediaForm({ item, initialValues }: MediaFormProps) {
   const router = useRouter();
@@ -382,7 +382,11 @@ export function MediaForm({ item, initialValues }: MediaFormProps) {
                 <SelectValue>{MEDIA_TYPE_LABELS[type]}</SelectValue>
               </SelectTrigger>
               <SelectContent>
-                {MEDIA_TYPES.map((value) => (
+                {/* A hidden type stays listed for a collection that already has it. */}
+                {(SELECTABLE_MEDIA_TYPES.includes(type)
+                  ? SELECTABLE_MEDIA_TYPES
+                  : [...SELECTABLE_MEDIA_TYPES, type]
+                ).map((value) => (
                   <SelectItem key={value} value={value}>
                     {MEDIA_TYPE_LABELS[value]}
                   </SelectItem>

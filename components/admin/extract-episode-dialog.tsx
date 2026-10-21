@@ -20,9 +20,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { SELECTABLE_MEDIA_TYPES } from "@/lib/constants";
 import { isEpisodic, MEDIA_TYPE_LABELS, type MediaType } from "@/types/media";
-
-const MEDIA_TYPES = Object.keys(MEDIA_TYPE_LABELS) as MediaType[];
 
 interface ExtractEpisodeDialogProps {
   open: boolean;
@@ -90,7 +89,7 @@ export function ExtractEpisodeDialog({
                 <SelectValue>{MEDIA_TYPE_LABELS[type]}</SelectValue>
               </SelectTrigger>
               <SelectContent>
-                {MEDIA_TYPES.map((value) => (
+                {SELECTABLE_MEDIA_TYPES.map((value) => (
                   <SelectItem key={value} value={value}>
                     {MEDIA_TYPE_LABELS[value]}
                   </SelectItem>

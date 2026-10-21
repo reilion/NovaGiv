@@ -1,6 +1,19 @@
-import type { MediaType, SortOption } from "@/types/media";
+import { MEDIA_TYPE_LABELS, type MediaType, type SortOption } from "@/types/media";
 
-export const FILTER_TABS: { value: MediaType | "all"; label: string }[] = [
+/**
+ * Temporary: types without content yet. They are left out of the catalog's
+ * filter tabs and of the type pickers in /admin (a collection that already has
+ * one keeps showing it). Remove a type from here once it has collections; that
+ * is the whole switch.
+ */
+export const HIDDEN_MEDIA_TYPES: readonly MediaType[] = ["special", "karaoke"];
+
+/** Types offered in the /admin pickers, in label order. */
+export const SELECTABLE_MEDIA_TYPES = (Object.keys(MEDIA_TYPE_LABELS) as MediaType[]).filter(
+  (type) => !HIDDEN_MEDIA_TYPES.includes(type)
+);
+
+const ALL_FILTER_TABS: { value: MediaType | "all"; label: string }[] = [
   { value: "all", label: "Todos" },
   { value: "movie", label: "Películas" },
   { value: "series", label: "Series" },
@@ -8,6 +21,10 @@ export const FILTER_TABS: { value: MediaType | "all"; label: string }[] = [
   { value: "special", label: "Especiales / Votaciones" },
   { value: "karaoke", label: "Karaokes" },
 ];
+
+export const FILTER_TABS = ALL_FILTER_TABS.filter(
+  (tab) => tab.value === "all" || !HIDDEN_MEDIA_TYPES.includes(tab.value)
+);
 
 export const SORT_OPTIONS: { value: SortOption; label: string }[] = [
   { value: "recent", label: "Más recientes" },

@@ -112,7 +112,19 @@ de modo que una colección queda igual venga por donde venga:
 | Cómo lee | `fetch` + cheerio | Playwright (navegador real) |
 | Alcance | Primeros 20 videos por canal, [15 canales](lib/constants.ts) | Todo el catálogo, scrolleando hasta el final |
 | Dónde corre | En el servidor web | En tu máquina (tarda minutos; excedería un timeout serverless) |
-| Flags | — | `--dry-run`, `--limit N` |
+| Flags | — | `--dry-run`, `N` / `--latest N` / `--limit N`, `--channel cID` |
+
+```bash
+pnpm okru:sync                  # todos los canales
+pnpm okru:sync 20               # solo los 20 canales más recientes (= --latest 20 / --limit 20)
+pnpm okru:sync 20 --dry-run     # lo mismo, sin escribir nada: solo informa
+pnpm okru:sync --channel c12345 # re-sincroniza un único canal
+```
+
+Con un número, el scraper deja de scrollear la lista de canales en cuanto tiene N cargados, así
+que tarda mucho menos que una sincronización completa. Asume que ok.ru lista los canales del
+más nuevo al más antiguo. El catálogo de canales del selector de `/admin` solo se actualiza con
+los canales leídos en esa ejecución; los demás no se borran.
 
 ok.ru pagina de 20 en 20 y el "cargar más" exige una cabecera `tkn` que el sitio genera en
 JavaScript y rota en cada carga: por eso el camino completo necesita un navegador de verdad.

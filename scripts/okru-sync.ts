@@ -12,7 +12,8 @@
  *
  * Run locally:  pnpm okru:sync
  *               pnpm okru:sync --dry-run   (scrape + report, write nothing)
- *               pnpm okru:sync --limit 5   (only the first N channels)
+ *               pnpm okru:sync 20          (only the 20 most recent channels;
+ *                                           same as --limit 20 / --latest 20)
  *
  * Why this exists next to the button in /admin/import:
  * ok.ru lazy-loads both the channel grid and each channel's video grid in
@@ -54,11 +55,17 @@ const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
 const DRY_RUN = process.argv.includes("--dry-run");
+/**
+ * `--limit 20`, `--latest 20` or just `20`: only the N most recent channels.
+ * ok.ru lists channels newest first, so scrolling stops as soon as N are loaded.
+ */
 const LIMIT = (() => {
-  const idx = process.argv.indexOf("--limit");
-  if (idx === -1) return Infinity;
-  const value = Number(process.argv[idx + 1]);
-  return Number.isFinite(value) && value > 0 ? value : Infinity;
+  const args = process.argv.slice(2);
+  const flagIdx = args.findIndex((arg) => arg === "--limit" || arg === "--latest");
+  const raw = flagIdx !== -1 ? args[flagIdx + 1] : args.find((arg) => /^\d+$/.test(arg));
+  if (raw === undefined) return Infinity;
+  const value = Number(raw);
+  return Number.isInteger(value) && value > 0 ? value : Infinity;
 })();
 /** `--channel c12345` restricts the run to one channel (handy for re-syncing). */
 const ONLY_CHANNEL = (() => {
@@ -137,13 +144,17 @@ function formatDuration(raw: string): string | undefined {
   return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
 }
 
-/** Scrolls to the bottom repeatedly until the card count stops growing. */
-async function scrollToEnd(page: Page, cardSelector: string, label: string) {
+/**
+ * Scrolls to the bottom repeatedly until the card count stops growing, or
+ * until at least `target` cards are loaded.
+ */
+async function scrollToEnd(page: Page, cardSelector: string, label: string, target = Infinity) {
   let previous = -1;
   let stableRounds = 0;
 
   for (let i = 0; i < 400; i++) {
     const count = await page.locator(cardSelector).count();
+    if (count >= target) break;
     if (count === previous) {
       if (++stableRounds >= 4) break;
     } else {
@@ -156,12 +167,15 @@ async function scrollToEnd(page: Page, cardSelector: string, label: string) {
   }
 }
 
-async function scrapeChannels(context: BrowserContext): Promise<ScrapedChannel[]> {
+async function scrapeChannels(
+  context: BrowserContext,
+  target = Infinity
+): Promise<ScrapedChannel[]> {
   const page = await context.newPage();
   await page.goto(PROFILE_URL, { waitUntil: "domcontentloaded", timeout: 60_000 });
   await page.waitForSelector("div.video-card.__channel", { timeout: 30_000 });
 
-  await scrollToEnd(page, "div.video-card.__channel", "canales");
+  await scrollToEnd(page, "div.video-card.__channel", "canales", target);
 
   const channels = await page.$$eval("div.video-card.__channel", (cards) =>
     cards
@@ -280,14 +294,19 @@ async function main() {
 
   if (DRY_RUN) console.log("MODO DRY-RUN: no se escribirá nada en Supabase.\n");
 
-  console.log("Leyendo canales de ok.ru (esto puede tardar varios minutos)…");
-  const allChannels = await scrapeChannels(context);
+  console.log(
+    Number.isFinite(LIMIT) && !ONLY_CHANNEL
+      ? `Leyendo los ${LIMIT} canales más recientes de ok.ru…`
+      : "Leyendo canales de ok.ru (esto puede tardar varios minutos)…"
+  );
+  // --channel needs the full list to find its channel, so it never stops early.
+  const allChannels = await scrapeChannels(context, ONLY_CHANNEL ? Infinity : LIMIT);
   const channels = (ONLY_CHANNEL
     ? allChannels.filter((c) => c.id === ONLY_CHANNEL)
     : allChannels
   ).slice(0, LIMIT);
   console.log(
-    `\nCanales encontrados: ${allChannels.length}` +
+    `\nCanales leídos: ${allChannels.length}` +
       (channels.length !== allChannels.length ? ` (procesando ${channels.length})` : "")
   );
 

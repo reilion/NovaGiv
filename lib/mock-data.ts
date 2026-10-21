@@ -13,8 +13,8 @@ export const MOCK_STREAMER: StreamerProfile = {
   avatarUrl: "https://static-cdn.jtvnw.net/jtv_user_pictures/a11aa1f7-c873-4023-b481-698b07ed8d94-profile_image-70x70.png",
   bannerUrl: "https://picsum.photos/seed/novagiv-banner/1600/400",
   isLive: true,
-  liveTitle: "Maratón de anime + karaoke nocturno",
-  bio: "Resubidos organizados de mis transmisiones: películas, series, anime, votaciones y karaokes.",
+  liveTitle: "Resubidos organizados de mis transmisiones",
+  bio: "Resubidos organizados de mis transmisiones: películas, series, anime y votaciones.",
   socials: [
     { platform: "twitch", url: "https://twitch.tv/novagiv" },
     { platform: "youtube", url: "https://youtube.com/@novagiv" },

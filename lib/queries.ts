@@ -5,6 +5,7 @@ import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
 import { canSeeViewCounts } from "@/lib/auth";
 import { findEpisodeByParam } from "@/lib/episode-param";
+import { collectGenres, type GenreCount } from "@/lib/media-filter";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
 import { MOCK_MEDIA, MOCK_STREAMER } from "@/lib/mock-data";
@@ -442,6 +443,25 @@ export const getWatchHistory = cache(async function getWatchHistory(): Promise<
     },
   }));
 });
+
+/**
+ * Every genre in use, drafts included, folded and counted the way the catalog
+ * filter folds them — the options of the admin form's genre picker, so a new
+ * title reuses "Fantasía" instead of filing itself under a fourth spelling.
+ */
+export async function getAllGenresForAdmin(): Promise<GenreCount[]> {
+  if (!isSupabaseConfigured) return collectGenres(MOCK_MEDIA);
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.from("media_items").select("genres");
+
+  if (error || !data) {
+    if (error) console.error("getAllGenresForAdmin error —", error.message);
+    return [];
+  }
+
+  return collectGenres(data as { genres: string[] }[]);
+}
 
 /** Single item by primary key, used by the admin edit form. */
 export async function getMediaItemById(id: string): Promise<MediaItem | null> {

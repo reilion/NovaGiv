@@ -196,7 +196,7 @@ function preferredSpelling(variants: Map<string, number>): string {
  * each look incomplete. `filterAndSortMedia` matches them the same way, so
  * picking any of them finds all of it.
  */
-export function collectGenres(items: MediaItem[]): GenreCount[] {
+export function collectGenres(items: Pick<MediaItem, "genres">[]): GenreCount[] {
   const groups = new Map<string, { variants: Map<string, number>; count: number }>();
 
   for (const item of items) {

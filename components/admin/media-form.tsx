@@ -6,6 +6,7 @@ import { CalendarSearch, ListOrdered, Plus, Scissors, Trash2 } from "lucide-reac
 
 import { ChannelEpisodePicker } from "@/components/admin/channel-episode-picker";
 import { ExtractEpisodeDialog } from "@/components/admin/extract-episode-dialog";
+import { GenrePicker } from "@/components/admin/genre-picker";
 import { OkRuChannelPicker } from "@/components/admin/okru-channel-picker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -24,6 +25,7 @@ import { extractEpisodeToCollection } from "@/lib/actions/channel-collections";
 import type { ChannelSiblingEpisode } from "@/lib/actions/channel-collections";
 import { upsertMediaItem } from "@/lib/actions/media";
 import { SELECTABLE_MEDIA_TYPES } from "@/lib/constants";
+import type { GenreCount } from "@/lib/media-filter";
 import { formatStreamDate, formatStreamRange, parseStreamTitle } from "@/lib/stream-date";
 import { slugify } from "@/lib/text";
 import { cn } from "@/lib/utils";
@@ -54,6 +56,8 @@ interface MediaFormInitialValues {
 interface MediaFormProps {
   item?: MediaItem;
   initialValues?: MediaFormInitialValues;
+  /** Genres already in the catalog, offered by the genre picker. */
+  genreOptions?: GenreCount[];
 }
 
 interface EpisodeDraft extends EpisodeInput {
@@ -67,7 +71,7 @@ function nextDraftKey() {
 }
 
 
-export function MediaForm({ item, initialValues }: MediaFormProps) {
+export function MediaForm({ item, initialValues, genreOptions = [] }: MediaFormProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -78,9 +82,7 @@ export function MediaForm({ item, initialValues }: MediaFormProps) {
   const [slugTouched, setSlugTouched] = useState(Boolean(item));
   const [type, setType] = useState<MediaType>(item?.type ?? initialValues?.type ?? "movie");
   const [posterUrl, setPosterUrl] = useState(item?.posterUrl ?? initialValues?.posterUrl ?? "");
-  const [genresInput, setGenresInput] = useState(
-    item?.genres.join(", ") ?? initialValues?.genres?.join(", ") ?? ""
-  );
+  const [genres, setGenres] = useState<string[]>(item?.genres ?? initialValues?.genres ?? []);
   const [year, setYear] = useState(item?.year?.toString() ?? "");
   const [description, setDescription] = useState(item?.description ?? "");
   const [rating, setRating] = useState(item?.rating?.toString() ?? "");
@@ -265,10 +267,7 @@ export function MediaForm({ item, initialValues }: MediaFormProps) {
       slug,
       type,
       posterUrl,
-      genres: genresInput
-        .split(",")
-        .map((genre) => genre.trim())
-        .filter(Boolean),
+      genres: genres.map((genre) => genre.trim()).filter(Boolean),
       year: year ? Number(year) : undefined,
       description: description || undefined,
       rating: rating ? Number(rating) : undefined,
@@ -416,13 +415,13 @@ export function MediaForm({ item, initialValues }: MediaFormProps) {
             />
           </Field>
 
-          <Field label="Géneros (separados por coma)" htmlFor="genres" className="sm:col-span-2">
-            <Input
-              id="genres"
-              value={genresInput}
-              onChange={(event) => setGenresInput(event.target.value)}
-              placeholder="Fantasía, Aventura"
-            />
+          <Field
+            label="Géneros"
+            htmlFor="genres"
+            hint="Elige de la lista o escribe uno nuevo y pulsa «Crear género»."
+            className="sm:col-span-2"
+          >
+            <GenrePicker id="genres" value={genres} onChange={setGenres} options={genreOptions} />
           </Field>
 
           <Field

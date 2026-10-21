@@ -1,10 +1,13 @@
 import { MediaForm } from "@/components/admin/media-form";
+import { getAllGenresForAdmin } from "@/lib/queries";
 
 export const metadata = {
   title: "Nuevo título | NovaGiv Admin",
 };
 
-export default function NewMediaPage() {
+export default async function NewMediaPage() {
+  const genreOptions = await getAllGenresForAdmin();
+
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -13,7 +16,7 @@ export default function NewMediaPage() {
           Completa los datos y guarda para publicarlo en el catálogo.
         </p>
       </div>
-      <MediaForm />
+      <MediaForm genreOptions={genreOptions} />
     </div>
   );
 }

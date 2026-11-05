@@ -1,0 +1,176 @@
+import type { ReactNode } from "react";
+import Link from "next/link";
+import { ArrowLeft, Bookmark, Heart, History } from "lucide-react";
+
+import { getAccount } from "@/lib/auth";
+import { getLikedVideos, getWatchHistory, getWatchLaterVideos } from "@/lib/queries";
+import { cn } from "@/lib/utils";
+
+export type LibraryTab = "history" | "later" | "likes";
+
+const TABS: { id: LibraryTab; href: string; label: string; icon: typeof Heart }[] = [
+  { id: "history", href: "/historial", label: "Historial y seguir viendo", icon: History },
+  { id: "later", href: "/ver-despues", label: "Ver después", icon: Bookmark },
+  { id: "likes", href: "/me-gusta", label: "Mis me gusta", icon: Heart },
+];
+
+function formatJoinDate(value: string | null): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleDateString("es", { month: "short", year: "numeric" });
+}
+
+/**
+ * The frame shared by the three personal lists: who you are, how much is on
+ * each list, and tabs to move between them. Each page has already checked the
+ * session; the three queries are request-cached, so the one a page also renders
+ * is not fetched twice.
+ */
+export async function LibraryShell({
+  active,
+  description,
+  children,
+}: {
+  active: LibraryTab;
+  description: string;
+  children: ReactNode;
+}) {
+  const [account, history, later, likes] = await Promise.all([
+    getAccount(),
+    getWatchHistory(),
+    getWatchLaterVideos(),
+    getLikedVideos(),
+  ]);
+
+  const counts: Record<LibraryTab, number> = {
+    history: history?.length ?? 0,
+    later: later?.length ?? 0,
+    likes: likes?.length ?? 0,
+  };
+  const joined = formatJoinDate(account?.createdAt ?? null);
+  const current = TABS.find((tab) => tab.id === active)!;
+
+  return (
+    <div className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6 lg:px-8">
+      <Link
+        href="/"
+        className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+      >
+        <ArrowLeft className="size-4" />
+        Volver al catálogo
+      </Link>
+
+      <header className="relative mt-6 flex flex-col justify-between gap-6 overflow-hidden rounded-2xl bg-surface-low p-6 ring-1 ring-border lg:flex-row lg:items-center">
+        <div className="pointer-events-none absolute -right-20 -top-20 size-72 rounded-full bg-primary/10 blur-3xl" />
+        <div className="relative flex items-center gap-4">
+          <span className="flex size-16 shrink-0 items-center justify-center rounded-xl bg-primary/20 text-xl font-bold uppercase text-primary ring-1 ring-primary/40">
+            {account?.username.slice(0, 2)}
+          </span>
+          <div className="flex min-w-0 flex-col gap-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-2xl font-bold tracking-tight text-foreground">
+                @{account?.username}
+              </h1>
+              {account?.role === "admin" && (
+                <span className="label-caps rounded bg-surface-high px-1.5 py-0.5 text-primary">
+                  NovaGiv Host
+                </span>
+              )}
+              {joined && <span className="label-code text-outline">· Miembro desde {joined}</span>}
+            </div>
+            <p className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+              <current.icon className="size-4 text-primary" />
+              {current.label}
+            </p>
+            <p className="text-xs text-muted-foreground">{description}</p>
+          </div>
+        </div>
+
+        <dl className="relative grid grid-cols-3 gap-4 rounded-xl bg-surface-lowest p-4 sm:gap-8 sm:px-6">
+          <Stat label="Colecciones" value={counts.history} hint="En el historial" icon={History} />
+          <Stat label="Favoritos" value={counts.likes} hint="Me gusta" icon={Heart} tone="text-neon" />
+          <Stat label="En espera" value={counts.later} hint="Ver después" icon={Bookmark} tone="text-tertiary" />
+        </dl>
+      </header>
+
+      <nav
+        aria-label="Mis listas"
+        className="scrollbar-none mt-6 flex gap-1 overflow-x-auto rounded-xl bg-surface-low p-1 ring-1 ring-border sm:w-fit"
+      >
+        {TABS.map((tab) => {
+          const selected = tab.id === active;
+          return (
+            <Link
+              key={tab.id}
+              href={tab.href}
+              aria-current={selected ? "page" : undefined}
+              className={cn(
+                "flex shrink-0 items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors",
+                selected
+                  ? "bg-surface-high text-primary"
+                  : "text-muted-foreground hover:bg-surface hover:text-foreground"
+              )}
+            >
+              <tab.icon className="size-4" />
+              {tab.label}
+              <span
+                className={cn(
+                  "label-code rounded-full px-1.5 py-0.5 text-[11px]",
+                  selected ? "bg-primary text-primary-foreground" : "bg-surface-highest text-muted-foreground"
+                )}
+              >
+                {counts[tab.id]}
+              </span>
+            </Link>
+          );
+        })}
+      </nav>
+
+      <div className="mt-6">{children}</div>
+    </div>
+  );
+}
+
+function Stat({
+  label,
+  value,
+  hint,
+  icon: Icon,
+  tone = "text-primary",
+}: {
+  label: string;
+  value: number;
+  hint: string;
+  icon: typeof Heart;
+  tone?: string;
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <dt className={cn("label-caps flex items-center gap-1.5", tone)}>
+        <Icon className="size-3.5" />
+        {label}
+      </dt>
+      <dd className="text-2xl font-bold text-foreground">{value}</dd>
+      <dd className="label-code text-outline">{hint}</dd>
+    </div>
+  );
+}
+
+/** Empty list: what goes here, and the way back to finding something. */
+export function LibraryEmpty({ icon: Icon, children }: { icon: typeof Heart; children: ReactNode }) {
+  return (
+    <div className="flex flex-col items-center gap-4 rounded-2xl bg-surface-low px-4 py-16 text-center ring-1 ring-border">
+      <span className="flex size-14 items-center justify-center rounded-2xl bg-surface">
+        <Icon className="size-7 text-primary" />
+      </span>
+      <p className="max-w-sm text-sm text-muted-foreground">{children}</p>
+      <Link
+        href="/"
+        className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-neon"
+      >
+        Explorar el catálogo
+      </Link>
+    </div>
+  );
+}

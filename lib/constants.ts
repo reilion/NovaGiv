@@ -26,6 +26,14 @@ export const FILTER_TABS = ALL_FILTER_TABS.filter(
   (tab) => tab.value === "all" || !HIDDEN_MEDIA_TYPES.includes(tab.value)
 );
 
+/**
+ * The hidden types, still shown — greyed out with a «Pronto» tag — in the
+ * header and the catalog tabs, so visitors know they are on their way.
+ */
+export const UPCOMING_FILTER_TABS = ALL_FILTER_TABS.filter(
+  (tab) => tab.value !== "all" && HIDDEN_MEDIA_TYPES.includes(tab.value)
+);
+
 export const SORT_OPTIONS: { value: SortOption; label: string }[] = [
   { value: "recent", label: "Más recientes" },
   { value: "streamed", label: "Stream más reciente" },

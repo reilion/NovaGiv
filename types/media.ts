@@ -215,6 +215,15 @@ export const MEDIA_TYPE_LABELS: Record<MediaType, string> = {
   karaoke: "Karaokes",
 };
 
+/** Singular, for the tag on a single title («ANIME», «PELÍCULA»). */
+export const MEDIA_TYPE_TAGS: Record<MediaType, string> = {
+  movie: "Película",
+  series: "Serie",
+  anime: "Anime",
+  special: "Especial",
+  karaoke: "Karaoke",
+};
+
 export const MEDIA_STATUS_LABELS: Record<MediaStatus, string> = {
   ongoing: "En emisión",
   completed: "Finalizada",

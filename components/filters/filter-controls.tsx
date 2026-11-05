@@ -60,10 +60,10 @@ export function FilterControls({
   const hasAnyDateFilter = hasRange || active.year !== "all" || active.month !== "all";
 
   return (
-    <div className={cn("flex w-full gap-3", stacked ? "flex-col" : "flex-wrap items-end")}>
+    <div className={cn("flex gap-2", stacked ? "w-full flex-col gap-3" : "flex-wrap items-center")}>
       <Labelled label="Género" stacked={stacked}>
         <Select value={active.genre} onValueChange={(value) => onChange({ genre: String(value) })}>
-          <SelectTrigger className={cn(stacked ? "w-full" : "w-44")}>
+          <SelectTrigger className={cn(stacked ? "w-full" : "h-10! w-44 border-transparent bg-surface-low dark:bg-surface-low")}>
             {/* Passing children explicitly avoids relying on the popup's
                 items having mounted at least once to resolve a label. */}
             <SelectValue placeholder="Género">
@@ -86,7 +86,7 @@ export function FilterControls({
 
       <Labelled label="Ordenar por" stacked={stacked}>
         <Select value={active.sort} onValueChange={(value) => onChange({ sort: String(value) })}>
-          <SelectTrigger className={cn(stacked ? "w-full" : "w-56")}>
+          <SelectTrigger className={cn(stacked ? "w-full" : "h-10! w-52 border-transparent bg-surface-low dark:bg-surface-low")}>
             <SelectValue placeholder="Ordenar por">
               {SORT_OPTIONS.find((option) => option.value === active.sort)?.label}
             </SelectValue>
@@ -104,14 +104,14 @@ export function FilterControls({
       <div
         className={cn(
           "flex gap-2",
-          stacked ? "flex-col" : "flex-wrap items-end border-l border-border/60 pl-3"
+          stacked ? "flex-col" : "flex-wrap items-center rounded-lg bg-surface-low px-2 py-1"
         )}
       >
         <span
           className={cn(
-            "flex items-center gap-1.5 text-xs font-medium text-muted-foreground",
+            "label-caps flex items-center gap-1.5 text-outline",
             // Inline, it sits in a row of controls and has to line up with them.
-            !stacked && "h-9"
+            !stacked && "h-8 pl-1"
           )}
         >
           <CalendarRange className="size-4" />
@@ -124,7 +124,7 @@ export function FilterControls({
             onValueChange={(value) => onChange({ year: String(value) })}
             disabled={hasRange}
           >
-            <SelectTrigger className={cn(stacked ? "flex-1" : "w-36")} aria-label="Año de stream">
+            <SelectTrigger className={cn(stacked ? "flex-1" : "w-40 border-transparent bg-surface dark:bg-surface")} aria-label="Año de stream">
               <SelectValue placeholder="Año">
                 {active.year === "all" ? "Todos los años" : active.year}
               </SelectValue>
@@ -144,7 +144,7 @@ export function FilterControls({
             onValueChange={(value) => onChange({ month: String(value) })}
             disabled={hasRange}
           >
-            <SelectTrigger className={cn(stacked ? "flex-1" : "w-40")} aria-label="Mes de stream">
+            <SelectTrigger className={cn(stacked ? "flex-1" : "w-40 border-transparent bg-surface dark:bg-surface")} aria-label="Mes de stream">
               <SelectValue placeholder="Mes">
                 {active.month === "all"
                   ? "Todos los meses"
@@ -168,7 +168,7 @@ export function FilterControls({
             value={active.from}
             max={active.to || undefined}
             onChange={(event) => onChange({ from: event.target.value || null })}
-            className={cn(stacked ? "min-w-0 flex-1" : "w-40")}
+            className={cn(stacked ? "min-w-0 flex-1" : "label-code w-36 border-transparent bg-surface dark:bg-surface")}
             aria-label="Desde"
           />
           <span className="text-xs text-muted-foreground">a</span>
@@ -177,7 +177,7 @@ export function FilterControls({
             value={active.to}
             min={active.from || undefined}
             onChange={(event) => onChange({ to: event.target.value || null })}
-            className={cn(stacked ? "min-w-0 flex-1" : "w-40")}
+            className={cn(stacked ? "min-w-0 flex-1" : "label-code w-36 border-transparent bg-surface dark:bg-surface")}
             aria-label="Hasta"
           />
         </div>

@@ -29,7 +29,7 @@ export function RegisterForm({ warning }: { warning?: string }) {
   // created but there is no session yet, so there is nothing to redirect to.
   if (state?.notice) {
     return (
-      <Card className="w-full max-w-sm">
+      <Card className="relative w-full max-w-sm bg-surface-low shadow-[0_0_48px_-16px_rgba(208,188,255,0.35)] ring-border">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <MailCheck className="size-5 text-primary" />
@@ -47,7 +47,7 @@ export function RegisterForm({ warning }: { warning?: string }) {
   }
 
   return (
-    <Card className="w-full max-w-sm">
+    <Card className="relative w-full max-w-sm bg-surface-low shadow-[0_0_48px_-16px_rgba(208,188,255,0.35)] ring-border">
       <CardHeader>
         <CardTitle>Crear cuenta</CardTitle>
         <CardDescription>

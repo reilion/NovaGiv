@@ -106,7 +106,7 @@ export function PlayerSizeMenu({
     <DropdownMenu>
       <DropdownMenuTrigger
         render={
-          <Button variant="outline" size="sm" className="shrink-0" aria-label="Tamaño del video" />
+          <Button variant="ghost" size="sm" className="shrink-0" aria-label="Tamaño del video" />
         }
       >
         <Monitor className="size-4" />

@@ -1,13 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, RefreshCw } from "lucide-react";
 
 import { EmptyState, MediaGrid, MediaGridByYear } from "@/components/media/media-grid";
 import { Button } from "@/components/ui/button";
 import { loadCatalogPage } from "@/lib/actions/catalog";
 import { groupByStreamYear } from "@/lib/media-filter";
+import { cn } from "@/lib/utils";
 import type { CatalogCard, CatalogPage } from "@/types/media";
+
+/** What one more page adds, for the button label — the server pages by this many. */
+const PAGE_HINT = 24;
 
 interface CatalogFeedProps {
   /** The page the server already rendered — the grid starts filled. */
@@ -118,19 +122,28 @@ export function CatalogFeed({ initial, query, grouped, ascending }: CatalogFeedP
           </>
         ) : nextOffset !== null ? (
           <>
-            {isLoading && <Loader2 className="size-5 animate-spin text-primary" />}
+            <p className="label-code flex items-center gap-2">
+              {isLoading && <Loader2 className="size-4 animate-spin text-primary" />}
+              Mostrando <span className="font-semibold text-foreground">{items.length}</span> de{" "}
+              <span className="font-semibold text-foreground">{initial.total}</span> colecciones
+            </p>
             {/* Also the way in without an IntersectionObserver, and the way out
                 for anybody who would rather click than keep scrolling. */}
-            <Button type="button" variant="ghost" size="sm" onClick={() => void loadMore()}>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => void loadMore()}
+              disabled={isLoading}
+              className="h-11 gap-2 rounded-xl bg-surface-low px-6 font-semibold shadow-[0_0_24px_-8px_rgba(208,188,255,0.35)] hover:bg-surface"
+            >
+              <RefreshCw className={cn("size-4 text-primary", isLoading && "animate-spin")} />
               Cargar más
+              <span className="label-code text-outline">(+{Math.min(PAGE_HINT, initial.total - items.length)})</span>
             </Button>
-            <p>
-              {items.length} de {initial.total}
-            </p>
           </>
         ) : (
           initial.total > 0 && (
-            <p>
+            <p className="label-code">
               {initial.total} {initial.total === 1 ? "colección" : "colecciones"} en total.
             </p>
           )

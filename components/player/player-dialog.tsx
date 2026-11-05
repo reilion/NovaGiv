@@ -46,7 +46,12 @@ export function PlayerDialog({
       }}
     >
       <DialogContent
-        className={cn("gap-0 overflow-hidden p-0", sizePreset.width)}
+        className={cn(
+          "gap-0 overflow-hidden bg-surface-low p-0 shadow-[0_0_48px_-12px_rgba(208,188,255,0.35)] ring-border",
+          // The close button sits over the ok.ru frame: give it a backdrop.
+          "[&>[data-slot=dialog-close]]:z-10 [&>[data-slot=dialog-close]]:bg-black/60 [&>[data-slot=dialog-close]]:text-foreground [&>[data-slot=dialog-close]]:backdrop-blur-md",
+          sizePreset.width
+        )}
         showCloseButton
         // Without this, focus lands on the first tabbable element — which is
         // the ok.ru iframe. Every key from then on, Escape included, belongs to

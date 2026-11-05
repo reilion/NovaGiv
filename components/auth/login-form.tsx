@@ -19,7 +19,7 @@ export function LoginForm({ next, warning }: { next?: string; warning?: string }
   const [captchaReady, setCaptchaReady] = useState(!isTurnstileEnabled);
 
   return (
-    <Card className="w-full max-w-sm">
+    <Card className="relative w-full max-w-sm bg-surface-low shadow-[0_0_48px_-16px_rgba(208,188,255,0.35)] ring-border">
       <CardHeader>
         <CardTitle>Iniciar sesión</CardTitle>
         <CardDescription>Entra con tu usuario y contraseña.</CardDescription>

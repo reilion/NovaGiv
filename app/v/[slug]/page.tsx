@@ -8,7 +8,7 @@ import { loadMediaView } from "@/lib/media-view";
 import { getMediaBySlug } from "@/lib/queries";
 import { formatStreamRange } from "@/lib/stream-date";
 import { cn } from "@/lib/utils";
-import type { MediaItem } from "@/types/media";
+import { MEDIA_TYPE_LABELS, type MediaItem } from "@/types/media";
 
 interface MediaPageProps {
   params: Promise<{ slug: string }>;
@@ -75,13 +75,32 @@ export default async function MediaPage({ params, searchParams }: MediaPageProps
       savedVideoIds={savedVideoIds}
       initialEpisodeId={initialEpisodeId}
       toolbar={
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <Link href="/" className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "-ml-2")}>
+        <nav
+          aria-label="Ruta"
+          className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl bg-surface-low p-2 ring-1 ring-border"
+        >
+          <Link href="/" className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "font-semibold")}>
             <ArrowLeft className="size-4" />
             Volver al catálogo
           </Link>
-          <span className="font-heading text-sm font-medium text-muted-foreground">NovaGiv</span>
-        </div>
+          <ol className="label-code flex min-w-0 flex-wrap items-center gap-1.5 text-outline">
+            <li>
+              <Link href="/" className="transition-colors hover:text-foreground">
+                Catálogo
+              </Link>
+            </li>
+            <li aria-hidden>/</li>
+            <li>
+              <Link href={`/?tab=${item.type}`} className="transition-colors hover:text-foreground">
+                {MEDIA_TYPE_LABELS[item.type]}
+              </Link>
+            </li>
+            <li aria-hidden>/</li>
+            <li className="min-w-0 truncate text-foreground" aria-current="page">
+              {item.title}
+            </li>
+          </ol>
+        </nav>
       }
     />
   );

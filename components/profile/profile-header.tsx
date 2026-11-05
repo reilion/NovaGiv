@@ -1,137 +1,125 @@
-import { Suspense, type ComponentType } from "react";
 import Image from "next/image";
-import Link from "next/link";
-import { Globe, MessageCircle, PlayCircle, Tv, X } from "lucide-react";
+import { ExternalLink, MessageCircle, Play } from "lucide-react";
 
-import { AccountMenu, AccountMenuSkeleton } from "@/components/auth/account-menu";
+import { LiveDot } from "@/components/layout/site-header";
+import { SOCIAL_META } from "@/components/layout/social-links";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import type { SocialPlatform, StreamerProfile } from "@/types/streamer";
+import type { StreamerProfile } from "@/types/streamer";
 
-interface SocialMeta {
-  label: string;
-  icon: ComponentType<{ className?: string }>;
-  className: string;
-}
-
-// lucide-react has no brand glyphs, so each platform gets a generic icon
-// tinted with that platform's brand color to keep the links recognizable.
-const SOCIAL_META: Record<SocialPlatform, SocialMeta> = {
-  twitch: {
-    label: "Twitch",
-    icon: Tv,
-    className: "bg-[#9146FF]/15 text-[#9146FF] hover:bg-[#9146FF]/25",
-  },
-  youtube: {
-    label: "YouTube",
-    icon: PlayCircle,
-    className: "bg-[#FF0000]/15 text-[#FF4444] hover:bg-[#FF0000]/25",
-  },
-  website: {
-    label: "Sitio web",
-    icon: Globe,
-    className: "bg-primary/15 text-primary hover:bg-primary/25",
-  },
-  discord: {
-    label: "Discord",
-    icon: MessageCircle,
-    className: "bg-[#5865F2]/15 text-[#8891f5] hover:bg-[#5865F2]/25",
-  },
-  x: {
-    label: "X",
-    icon: X,
-    className: "bg-foreground/10 text-foreground hover:bg-foreground/20",
-  },
-};
-
+/**
+ * The streamer hero at the top of the catalog. Live, it is a way into the
+ * stream (title, rose badge, Twitch call to action); offline, it introduces
+ * the archive.
+ */
 export function ProfileHeader({ profile }: { profile: StreamerProfile }) {
+  const twitch = profile.socials.find((social) => social.platform === "twitch");
+  const discord = profile.socials.find((social) => social.platform === "discord");
+  const headline = profile.isLive && profile.liveTitle ? profile.liveTitle : profile.name;
+
   return (
-    <header className="relative overflow-hidden border-b border-border/60">
-      {profile.bannerUrl && (
-        <div className="absolute inset-0">
-          <Image
-            src={profile.bannerUrl}
-            alt=""
-            fill
-            priority
-            className="object-cover opacity-25"
-          />
-          <div className="absolute inset-0 bg-gradient-to-t from-background via-background/85 to-background/50" />
-        </div>
-      )}
-
-      <div className="relative mx-auto flex w-full max-w-7xl flex-col gap-5 px-4 py-8 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
-        <div className="flex items-center gap-4">
-          <div className="relative shrink-0">
-            <Avatar className="size-16 ring-2 ring-primary/40 sm:size-20">
-              <AvatarImage src={profile.avatarUrl} alt={profile.name} />
-              <AvatarFallback>{profile.name.slice(0, 2).toUpperCase()}</AvatarFallback>
-            </Avatar>
-            {profile.isLive && (
-              <span className="absolute -right-0.5 -top-0.5 flex size-4">
-                <span className="absolute inline-flex size-full animate-ping rounded-full bg-live/70" />
-                <span className="relative inline-flex size-4 rounded-full bg-live ring-2 ring-background" />
-              </span>
-            )}
+    <section className="mx-auto w-full max-w-7xl px-4 pt-6 sm:px-6 lg:px-8">
+      <div className="relative overflow-hidden rounded-2xl bg-surface-low shadow-2xl ring-1 ring-border">
+        {profile.bannerUrl && (
+          <div className="absolute inset-0">
+            <Image src={profile.bannerUrl} alt="" fill priority className="object-cover opacity-15" />
+            <div className="absolute inset-0 bg-gradient-to-r from-surface-low via-surface-low/90 to-surface-low/60" />
           </div>
+        )}
+        <div className="pointer-events-none absolute -left-24 -top-24 size-96 rounded-full bg-primary/15 blur-3xl" />
+        <div className="pointer-events-none absolute right-10 top-1/2 size-80 rounded-full bg-live/10 blur-3xl" />
 
-          <div className="flex flex-col gap-1.5">
-            <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
-                {profile.name}
-              </h1>
-              <Badge
-                className={cn(
-                  profile.isLive
-                    ? "bg-live text-live-foreground [a]:hover:bg-live"
-                    : "bg-secondary text-secondary-foreground"
-                )}
-              >
-                <span
-                  className={cn(
-                    "size-1.5 rounded-full",
-                    profile.isLive ? "animate-pulse bg-live-foreground" : "bg-muted-foreground"
-                  )}
-                />
-                {profile.isLive ? "En vivo" : "Offline"}
-              </Badge>
+        <div className="relative flex flex-col justify-between gap-6 p-6 lg:p-10 xl:flex-row xl:items-center">
+          <div className="flex flex-col items-start gap-6 sm:flex-row sm:items-center">
+            <div className="relative shrink-0">
+              <Avatar className="size-24 rounded-2xl ring-2 ring-primary/40 after:rounded-2xl sm:size-28">
+                <AvatarImage src={profile.avatarUrl} alt={profile.name} className="rounded-2xl" />
+                <AvatarFallback className="rounded-2xl text-2xl">
+                  {profile.name.slice(0, 2).toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+              {profile.isLive && (
+                <span className="absolute -bottom-2.5 -right-2.5 flex items-center gap-1.5 rounded-full bg-surface-highest px-2 py-0.5 shadow-md">
+                  <LiveDot />
+                  <span className="label-caps text-tertiary">Live</span>
+                </span>
+              )}
             </div>
-            <p className="max-w-md text-sm text-muted-foreground">
-              {profile.isLive && profile.liveTitle ? profile.liveTitle : profile.bio}
-            </p>
+
+            <div className="flex min-w-0 flex-col gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                {profile.isLive ? (
+                  <span className="label-caps flex items-center gap-1.5 rounded bg-live/15 px-2.5 py-1 text-tertiary">
+                    <span className="size-1.5 animate-pulse rounded-full bg-live" />
+                    En vivo en Twitch
+                  </span>
+                ) : (
+                  <span className="label-caps flex items-center gap-1.5 rounded bg-surface-highest px-2.5 py-1 text-outline">
+                    <span className="size-1.5 rounded-full bg-outline" />
+                    Offline
+                  </span>
+                )}
+                {profile.handle && <span className="label-code text-muted-foreground">{profile.handle}</span>}
+              </div>
+
+              <h1 className="line-clamp-2 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
+                {headline}
+              </h1>
+              {profile.bio && (
+                <p className="max-w-2xl text-sm text-muted-foreground sm:text-base">{profile.bio}</p>
+              )}
+
+              <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                {profile.socials.map((social) => {
+                  const meta = SOCIAL_META[social.platform];
+                  const Icon = meta.icon;
+                  return (
+                    <a
+                      key={social.platform}
+                      href={social.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={cn(
+                        "label-code flex items-center gap-1.5 rounded-lg bg-surface px-2.5 py-1 text-muted-foreground transition-colors hover:bg-surface-high hover:text-foreground",
+                        social.platform === "twitch" && "text-primary"
+                      )}
+                    >
+                      <Icon className="size-3.5" />
+                      {meta.label}
+                    </a>
+                  );
+                })}
+              </div>
+            </div>
           </div>
-        </div>
 
-        <div className="flex flex-col items-start gap-3 sm:items-end">
-          <Suspense fallback={<AccountMenuSkeleton />}>
-            <AccountMenu />
-          </Suspense>
-
-          <div className="flex items-center gap-2">
-            {profile.socials.map((social) => {
-              const meta = SOCIAL_META[social.platform];
-              const Icon = meta.icon;
-              return (
-                <Link
-                  key={social.platform}
-                  href={social.url}
+          {twitch && (
+            <div className="flex shrink-0 flex-col gap-2 border-t border-outline-variant/30 pt-6 sm:flex-row xl:flex-col xl:border-l xl:border-t-0 xl:pl-10 xl:pt-0">
+              <a
+                href={twitch.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="group inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-6 py-3 text-sm font-bold text-primary-foreground shadow-[0_0_24px_-4px_rgba(208,188,255,0.45)] transition-all hover:bg-neon hover:shadow-[0_0_32px_rgba(251,171,255,0.6)]"
+              >
+                <Play className="size-4 fill-current transition-transform group-hover:scale-110" />
+                {profile.isLive ? "Ver directo en Twitch" : "Ir al canal de Twitch"}
+                <ExternalLink className="size-3.5 opacity-60" />
+              </a>
+              {discord && (
+                <a
+                  href={discord.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  aria-label={meta.label}
-                  title={meta.label}
-                  className={cn(
-                    "flex size-9 items-center justify-center rounded-full transition-colors",
-                    meta.className
-                  )}
+                  className="label-code inline-flex items-center justify-center gap-1.5 rounded-xl bg-surface px-4 py-2.5 text-muted-foreground transition-colors hover:bg-surface-high hover:text-foreground"
                 >
-                  <Icon className="size-4" />
-                </Link>
-              );
-            })}
-          </div>
+                  <MessageCircle className="size-4 text-neon" />
+                  Unirse al Discord
+                </a>
+              )}
+            </div>
+          )}
         </div>
       </div>
-    </header>
+    </section>
   );
 }

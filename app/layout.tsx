@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, JetBrains_Mono } from "next/font/google";
 
+import { HideOnRoutes } from "@/components/layout/hide-on-routes";
+import { SiteFooter } from "@/components/layout/site-footer";
+import { SiteHeader } from "@/components/layout/site-header";
 import { getPublicSiteUrl } from "@/lib/site-url";
 import "./globals.css";
 
@@ -9,8 +12,9 @@ const geistSans = Geist({
   subsets: ["latin"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+// The design's data face: stream dates, episode numbers, counters and badges.
+const jetbrainsMono = JetBrains_Mono({
+  variable: "--font-jetbrains-mono",
   subsets: ["latin"],
 });
 
@@ -34,6 +38,9 @@ export const metadata: Metadata = {
   twitter: { card: "summary_large_image" },
 };
 
+/** /admin brings its own chrome (a sidebar), so the public header and footer stay out of it. */
+const OWN_CHROME_ROUTES = ["/admin"];
+
 /**
  * `modal` is the parallel slot holding the player dialog. It is empty on every
  * route except an intercepted /v/[slug] (see app/@modal), where it renders over
@@ -45,10 +52,16 @@ export default function RootLayout({ children, modal }: LayoutProps<"/">) {
   return (
     <html
       lang="es"
-      className={`dark ${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`dark ${geistSans.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col bg-background text-foreground">
+      <body className="min-h-full flex flex-col bg-background text-foreground selection:bg-primary selection:text-primary-foreground">
+        <HideOnRoutes prefixes={OWN_CHROME_ROUTES}>
+          <SiteHeader />
+        </HideOnRoutes>
         {children}
+        <HideOnRoutes prefixes={OWN_CHROME_ROUTES}>
+          <SiteFooter />
+        </HideOnRoutes>
         {modal}
       </body>
     </html>

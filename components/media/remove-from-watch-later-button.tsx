@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { X } from "lucide-react";
+import { Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { removeFromWatchLater } from "@/lib/actions/watch-later";
@@ -39,7 +39,7 @@ export function RemoveFromWatchLaterButton({
         })
       }
     >
-      <X className="size-4" />
+      <Trash2 className="size-4" />
     </Button>
   );
 }

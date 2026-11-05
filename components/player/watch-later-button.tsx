@@ -41,7 +41,7 @@ export function WatchLaterButton({ mediaItemId, episodeId, saved, canSave }: Wat
       <Link
         href={href}
         title="Inicia sesión para guardar videos"
-        className={cn(buttonVariants({ variant: "outline", size: "sm" }), "shrink-0")}
+        className={cn(buttonVariants({ variant: "secondary", size: "sm" }), "shrink-0 bg-surface")}
       >
         <Bookmark className="size-4" />
         <span className="hidden sm:inline">Ver después</span>
@@ -76,15 +76,15 @@ export function WatchLaterButton({ mediaItemId, episodeId, saved, canSave }: Wat
       type="button"
       onClick={toggle}
       disabled={isPending}
-      variant={isSaved ? "secondary" : "outline"}
+      variant="secondary"
       size="sm"
-      className={cn("shrink-0", isSaved && "text-primary")}
+      className={cn("shrink-0 bg-surface", isSaved && "bg-primary/15 text-primary hover:bg-primary/25")}
       aria-pressed={isSaved}
       // Without the visible label on a phone, this is what says what it does.
       aria-label="Ver después"
       title={error ?? (isSaved ? "En tu lista de Ver después — quitar" : "Guardar para ver después")}
     >
-      <Icon className="size-4" />
+      <Icon className={cn("size-4", isSaved && "fill-current")} />
       <span className="hidden sm:inline">Ver después</span>
     </Button>
   );

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Search, SlidersHorizontal, X } from "lucide-react";
+import { RotateCcw, Search, SlidersHorizontal, X } from "lucide-react";
 
 import {
   FilterControls,
@@ -20,8 +20,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FILTER_TABS, MONTHS, SORT_OPTIONS } from "@/lib/constants";
+import { FILTER_TABS, MONTHS, SORT_OPTIONS, UPCOMING_FILTER_TABS } from "@/lib/constants";
 import { DEFAULT_SORT, type GenreCount } from "@/lib/media-filter";
 import { formatStreamDate } from "@/lib/stream-date";
 import { cn } from "@/lib/utils";
@@ -175,31 +174,56 @@ export function FilterBar({ streamYears = [], genres = [] }: FilterBarProps) {
   return (
     <div
       className={cn(
-        "sticky top-0 z-30 -mx-4 border-b border-border/60 bg-background/85 px-4 py-4 backdrop-blur-md transition-opacity supports-backdrop-filter:bg-background/70 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8",
+        "sticky top-[65px] z-30 -mx-4 mt-8 border-b border-border bg-background/85 px-4 py-4 backdrop-blur-xl transition-opacity supports-backdrop-filter:bg-background/75 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8",
         isPending && "opacity-70"
       )}
     >
-      <Tabs
-        value={active.tab}
-        onValueChange={(value) => updateParams({ tab: value === "all" ? null : String(value) })}
+      <div
+        className="scrollbar-none -mx-1 flex items-center gap-2 overflow-x-auto px-1 pb-0.5"
+        role="group"
+        aria-label="Tipo de contenido"
       >
-        <TabsList variant="line" className="w-full justify-start overflow-x-auto">
-          {FILTER_TABS.map((tab) => (
-            <TabsTrigger key={tab.value} value={tab.value} className="shrink-0">
+        {FILTER_TABS.map((tab) => {
+          const selected = active.tab === tab.value;
+          return (
+            <button
+              key={tab.value}
+              type="button"
+              aria-pressed={selected}
+              onClick={() => updateParams({ tab: tab.value === "all" ? null : tab.value })}
+              className={cn(
+                "shrink-0 rounded-lg px-3.5 py-1.5 text-sm font-medium transition-all",
+                selected
+                  ? "bg-primary text-primary-foreground shadow-[0_0_16px_-4px_rgba(208,188,255,0.5)]"
+                  : "bg-surface-low text-muted-foreground hover:bg-surface hover:text-foreground"
+              )}
+            >
               {tab.label}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-      </Tabs>
+            </button>
+          );
+        })}
+        {UPCOMING_FILTER_TABS.map((tab) => (
+          <span
+            key={tab.value}
+            className="flex shrink-0 cursor-default items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-muted-foreground/50"
+            title="Muy pronto en el catálogo"
+          >
+            {tab.label}
+            <span className="label-caps rounded bg-surface-highest px-1.5 py-0.5 text-[10px] normal-case text-outline">
+              Pronto
+            </span>
+          </span>
+        ))}
+      </div>
 
-      <div className="mt-3 flex items-center gap-2">
-        <div className="relative min-w-0 flex-1 sm:max-w-md">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <div className="relative min-w-0 flex-1 sm:min-w-72">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-outline" />
           <Input
             value={searchValue}
             onChange={(event) => setSearchValue(event.target.value)}
-            placeholder="Buscar título, episodio o fecha…"
-            className="pl-8 pr-8"
+            placeholder="Buscar por título, episodio o fecha (ej: 30 junio 2026)…"
+            className="h-10 rounded-lg border-transparent bg-surface-low pl-9 pr-9 dark:bg-surface-low"
             aria-label="Buscar contenido"
           />
           {searchValue && (
@@ -207,7 +231,7 @@ export function FilterBar({ streamYears = [], genres = [] }: FilterBarProps) {
               type="button"
               onClick={() => setSearchValue("")}
               aria-label="Borrar búsqueda"
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-outline transition-colors hover:text-foreground"
             >
               <X className="size-4" />
             </button>
@@ -218,7 +242,7 @@ export function FilterBar({ streamYears = [], genres = [] }: FilterBarProps) {
             the bar stops eating half the screen before a single poster shows. */}
         <Sheet>
           <SheetTrigger
-            render={<Button variant="outline" className="shrink-0 sm:hidden" />}
+            render={<Button variant="secondary" className="h-10 shrink-0 bg-surface-low sm:hidden" />}
             aria-label="Abrir filtros"
           >
             <SlidersHorizontal className="size-4" />
@@ -249,30 +273,36 @@ export function FilterBar({ streamYears = [], genres = [] }: FilterBarProps) {
             </SheetFooter>
           </SheetContent>
         </Sheet>
-      </div>
 
-      <div className="mt-3 hidden sm:flex">
-        <FilterControls {...controlProps} />
+        <div className="hidden sm:contents">
+          <FilterControls {...controlProps} />
+        </div>
       </div>
 
       {showChipsRow && (
-        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <span className="label-caps text-outline">Filtros activos:</span>
           {chips.map((chip) => (
             <button
               key={chip.key}
               type="button"
               onClick={() => updateParams(chip.clear)}
               aria-label={`Quitar filtro: ${chip.label}`}
-              className="inline-flex items-center gap-1 rounded-full bg-secondary py-1 pl-2.5 pr-1.5 text-xs text-secondary-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+              className="label-code inline-flex items-center gap-1.5 rounded bg-surface py-1 pl-2 pr-1.5 text-primary transition-colors hover:bg-surface-high"
             >
               {chip.label}
-              <X className="size-3" />
+              <X className="size-3 text-muted-foreground" />
             </button>
           ))}
 
-          <Button type="button" variant="ghost" size="sm" onClick={clearAll}>
+          <button
+            type="button"
+            onClick={clearAll}
+            className="label-code inline-flex items-center gap-1 rounded px-1.5 py-1 text-neon transition-colors hover:text-foreground"
+          >
+            <RotateCcw className="size-3" />
             Limpiar todo
-          </Button>
+          </button>
         </div>
       )}
     </div>

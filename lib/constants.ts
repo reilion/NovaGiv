@@ -76,3 +76,6 @@ export const VIEW_COUNTS_ADMIN_ONLY = true;
  * catalogue.
  */
 export const OKRU_SYNC_CHANNEL_LIMIT = 15;
+
+/** The id of the catalog's search box, so the phone header's search icon can jump to it. */
+export const CATALOG_SEARCH_ID = "catalog-search";

@@ -29,7 +29,7 @@ export async function ContinueWatching() {
   const entries = history.slice(0, SHELF_LIMIT);
 
   return (
-    <section className="flex flex-col gap-4 pt-8">
+    <section className="flex flex-col gap-4 pt-4 sm:pt-8">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <span className="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
@@ -108,10 +108,13 @@ export async function ContinueWatching() {
   );
 }
 
-/** What a visitor sees where the shelf would be. */
+/**
+ * What a visitor sees where the shelf would be. Tablets and up only: phones get
+ * the compact banner under the filter bar instead (CatalogGuestBanner).
+ */
 export function GuestPrompt() {
   return (
-    <section className="pt-8">
+    <section className="hidden pt-8 md:block">
       <div className="relative flex flex-col items-start justify-between gap-4 overflow-hidden rounded-2xl bg-surface-low p-5 ring-1 ring-border sm:flex-row sm:items-center sm:p-6">
         <div className="pointer-events-none absolute -right-16 -top-16 size-64 rounded-full bg-primary/10 blur-3xl" />
         <div className="relative flex items-center gap-4">

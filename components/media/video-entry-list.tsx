@@ -72,7 +72,7 @@ export function VideoEntryList({ entries, momentLabel, ctaLabel, action }: Video
               href={href}
               className="flex min-w-0 flex-1 items-center gap-4 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              <div className="relative aspect-[2/3] w-16 shrink-0 overflow-hidden rounded-lg bg-surface ring-1 ring-border sm:w-20">
+              <div className="relative aspect-[2/3] w-20 shrink-0 overflow-hidden rounded-lg bg-surface ring-1 ring-border">
                 <Image src={item.posterUrl} alt="" fill sizes="80px" className="object-cover" />
                 <span className="label-caps absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent px-1.5 pb-1 pt-4 text-[9px] text-foreground">
                   {MEDIA_TYPE_TAGS[item.type]}
@@ -109,7 +109,7 @@ export function VideoEntryList({ entries, momentLabel, ctaLabel, action }: Video
               </div>
             </Link>
 
-            <div className="flex shrink-0 items-center gap-1 self-end sm:self-center">
+            <div className="flex shrink-0 items-center justify-end gap-1 sm:self-center">
               <Link
                 href={href}
                 className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-[0_0_16px_-4px_rgba(208,188,255,0.4)] transition-colors hover:bg-neon"

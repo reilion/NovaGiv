@@ -22,12 +22,12 @@ export function BrandMark({
         className
       )}
     >
-      <span className="relative flex size-9 items-center justify-center rounded-lg bg-surface">
+      <span className="relative flex size-8 items-center justify-center rounded-lg bg-surface sm:size-9">
         <span className="pointer-events-none absolute -inset-1 rounded-xl bg-primary/20 blur-sm transition-opacity group-hover/brand:opacity-100 opacity-60" />
         <Clapperboard className="relative size-5 text-primary" />
       </span>
       <span className="text-lg font-bold tracking-tight text-foreground">
-        NovaGiv
+        Nova<span className="text-primary">Giv</span>
         {suffix && <span className="ml-1.5 font-semibold text-muted-foreground">{suffix}</span>}
       </span>
     </Link>

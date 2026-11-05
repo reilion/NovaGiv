@@ -5,11 +5,11 @@ import type { YearGroup } from "@/lib/media-filter";
 import type { CatalogCard } from "@/types/media";
 
 const GRID_CLASS =
-  "grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 xl:gap-5";
+  "grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 xl:gap-5";
 
 export function MediaGrid({ items }: { items: CatalogCard[] }) {
   return (
-    <div className={`${GRID_CLASS} py-8`}>
+    <div className={`${GRID_CLASS} py-4 sm:py-8`}>
       {items.map((item) => (
         <MediaCard key={item.id} item={item} />
       ))}
@@ -30,19 +30,19 @@ interface MediaGridByYearProps {
 /** Default view: one section per stream year, with undated items last. */
 export function MediaGridByYear({ groups, counts }: MediaGridByYearProps) {
   return (
-    <div className="flex flex-col gap-12 py-8">
+    <div className="flex flex-col gap-8 py-4 sm:gap-12 sm:py-8">
       {groups.map((group) => {
         const total = counts.get(group.year) ?? group.items.length;
 
         return (
-          <section key={group.year ?? "undated"} className="flex flex-col gap-5">
+          <section key={group.year ?? "undated"} className="flex flex-col gap-3 sm:gap-5">
             <div className="flex items-center gap-3">
               <span className="relative flex size-3 shrink-0" aria-hidden>
                 <span className="absolute inset-0 rounded-full bg-primary/40 blur-[3px]" />
                 <span className="relative size-3 rounded-full bg-primary" />
               </span>
               <CalendarDays className="hidden size-6 text-primary sm:block" aria-hidden />
-              <h2 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">
+              <h2 className="text-lg font-semibold tracking-tight text-foreground sm:text-2xl sm:font-bold">
                 {group.year ? `Streams de ${group.year}` : "Sin fecha de stream"}
                 <span className="font-semibold text-muted-foreground">
                   {" "}

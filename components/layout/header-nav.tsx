@@ -7,7 +7,7 @@ import { Menu, Search } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { FILTER_TABS, UPCOMING_FILTER_TABS } from "@/lib/constants";
+import { CATALOG_SEARCH_ID, FILTER_TABS, UPCOMING_FILTER_TABS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
 /** "Todos" reads as «Catálogo» up here: it is the way home, not a filter. */
@@ -72,7 +72,15 @@ export function HeaderNav() {
  * so it hides itself on the catalog — where the filter bar already has one and
  * two boxes would fight over the same param.
  */
-export function HeaderSearch({ className }: { className?: string }) {
+export function HeaderSearch({
+  className,
+  onSubmitted,
+  autoFocus,
+}: {
+  className?: string;
+  onSubmitted?: () => void;
+  autoFocus?: boolean;
+}) {
   const pathname = usePathname();
   const router = useRouter();
   const [value, setValue] = useState("");
@@ -83,6 +91,7 @@ export function HeaderSearch({ className }: { className?: string }) {
     event.preventDefault();
     const query = value.trim();
     router.push(query ? `/?q=${encodeURIComponent(query)}` : "/");
+    onSubmitted?.();
   }
 
   return (
@@ -91,6 +100,7 @@ export function HeaderSearch({ className }: { className?: string }) {
       <input
         value={value}
         onChange={(event) => setValue(event.target.value)}
+        autoFocus={autoFocus}
         placeholder="Buscar en el archivo…"
         aria-label="Buscar en el catálogo"
         className="h-9 w-full rounded-lg bg-surface-low pl-8 pr-3 text-sm text-foreground placeholder:text-outline focus:bg-surface focus:outline-none focus:ring-1 focus:ring-primary"
@@ -99,7 +109,58 @@ export function HeaderSearch({ className }: { className?: string }) {
   );
 }
 
-/** Phones and tablets: the same links, in a drawer. */
+/**
+ * Phones: a search icon in the header. On the catalog it jumps to the filter
+ * bar's own box (two boxes would fight over `?q=`); anywhere else it opens a
+ * search sheet that hands off to the catalog.
+ */
+export function MobileSearchButton({ className }: { className?: string }) {
+  const pathname = usePathname();
+  const [open, setOpen] = useState(false);
+
+  if (pathname === "/") {
+    return (
+      <Button
+        variant="ghost"
+        size="icon"
+        className={cn("size-11 text-muted-foreground", className)}
+        aria-label="Buscar en el catálogo"
+        onClick={() => {
+          const input = document.getElementById(CATALOG_SEARCH_ID);
+          input?.scrollIntoView({ block: "center", behavior: "smooth" });
+          input?.focus({ preventScroll: true });
+        }}
+      >
+        <Search className="size-[22px]" />
+      </Button>
+    );
+  }
+
+  return (
+    <Sheet open={open} onOpenChange={setOpen}>
+      <SheetTrigger
+        render={
+          <Button
+            variant="ghost"
+            size="icon"
+            className={cn("size-11 text-muted-foreground", className)}
+            aria-label="Buscar en el catálogo"
+          />
+        }
+      >
+        <Search className="size-[22px]" />
+      </SheetTrigger>
+      <SheetContent side="top" className="bg-surface-lowest px-4 pb-4 pt-14">
+        <SheetHeader className="sr-only">
+          <SheetTitle>Buscar</SheetTitle>
+        </SheetHeader>
+        <HeaderSearch className="w-full" onSubmitted={() => setOpen(false)} autoFocus />
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+/** Tablets: the same links, in a drawer. */
 export function MobileNav() {
   const active = useActiveTab();
   const [open, setOpen] = useState(false);
@@ -107,7 +168,10 @@ export function MobileNav() {
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger
-        render={<Button variant="ghost" size="icon" className="xl:hidden" aria-label="Abrir menú" />}
+        render={
+          // Phones navigate from the bottom tab bar; the drawer is for tablets.
+          <Button variant="ghost" size="icon" className="hidden md:inline-flex xl:hidden" aria-label="Abrir menú" />
+        }
       >
         <Menu className="size-5" />
       </SheetTrigger>

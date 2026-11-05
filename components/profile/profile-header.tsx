@@ -1,5 +1,5 @@
 import Image from "next/image";
-import { ExternalLink, MessageCircle, Play } from "lucide-react";
+import { ExternalLink, MessageCircle, Play, Radio } from "lucide-react";
 
 import { LiveDot } from "@/components/layout/site-header";
 import { SOCIAL_META } from "@/components/layout/social-links";
@@ -18,7 +18,9 @@ export function ProfileHeader({ profile }: { profile: StreamerProfile }) {
   const headline = profile.isLive && profile.liveTitle ? profile.liveTitle : profile.name;
 
   return (
-    <section className="mx-auto w-full max-w-7xl px-4 pt-6 sm:px-6 lg:px-8">
+    <>
+      <MobileLiveCard profile={profile} twitchUrl={twitch?.url} headline={headline} />
+    <section className="mx-auto hidden w-full max-w-7xl px-4 pt-6 sm:px-6 md:block lg:px-8">
       <div className="relative overflow-hidden rounded-2xl bg-surface-low shadow-2xl ring-1 ring-border">
         {profile.bannerUrl && (
           <div className="absolute inset-0">
@@ -116,6 +118,79 @@ export function ProfileHeader({ profile }: { profile: StreamerProfile }) {
                   Unirse al Discord
                 </a>
               )}
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+    </>
+  );
+}
+
+/**
+ * Phones: the hero folds into one card — live status, what is on, and the way
+ * into Twitch — so the catalog starts within the first screen.
+ */
+function MobileLiveCard({
+  profile,
+  twitchUrl,
+  headline,
+}: {
+  profile: StreamerProfile;
+  twitchUrl?: string;
+  headline: string;
+}) {
+  return (
+    <section className="px-4 pb-1 pt-2 md:hidden">
+      <div className="relative overflow-hidden rounded-xl bg-surface-low shadow-xl">
+        <div className="pointer-events-none absolute -right-12 -top-12 size-48 rounded-full bg-primary/10 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-8 -left-8 size-36 rounded-full bg-live/15 blur-2xl" />
+
+        <div className="relative flex flex-col gap-2 p-4">
+          <div className="flex items-center justify-between gap-2">
+            {profile.isLive ? (
+              <span className="flex items-center gap-1.5 rounded-full bg-live/20 px-2 py-0.5 text-tertiary">
+                <span className="size-2 animate-pulse rounded-full bg-live" />
+                <span className="label-caps">Twitch en directo</span>
+              </span>
+            ) : (
+              <span className="flex items-center gap-1.5 rounded-full bg-surface-highest px-2 py-0.5 text-outline">
+                <span className="size-1.5 rounded-full bg-outline" />
+                <span className="label-caps">Offline</span>
+              </span>
+            )}
+            {profile.handle && (
+              <span className="label-code truncate text-muted-foreground">{profile.handle}</span>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-0.5">
+            <h1 className="line-clamp-1 text-xl font-semibold tracking-tight text-foreground">
+              {headline}
+            </h1>
+            {profile.bio && (
+              <p className="line-clamp-1 text-xs text-muted-foreground">{profile.bio}</p>
+            )}
+          </div>
+
+          {twitchUrl && (
+            <div className="flex items-center justify-between gap-2 pt-1">
+              <span className="label-code flex min-w-0 items-center gap-1.5 text-neon">
+                <Radio className="size-4 shrink-0" />
+                <span className="truncate">{profile.name}</span>
+              </span>
+              <a
+                href={twitchUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={cn(
+                  "inline-flex shrink-0 items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-semibold shadow-md transition-transform active:scale-95",
+                  profile.isLive ? "bg-live text-[#5b0017]" : "bg-primary text-primary-foreground"
+                )}
+              >
+                <Play className="size-4 fill-current" />
+                {profile.isLive ? "Ver en Twitch" : "Ir a Twitch"}
+              </a>
             </div>
           )}
         </div>

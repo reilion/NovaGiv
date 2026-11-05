@@ -13,6 +13,7 @@ import Image from "next/image";
 import {
   CalendarDays,
   Check,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Clapperboard,
@@ -28,6 +29,7 @@ import {
   Star,
 } from "lucide-react";
 
+import { GuestSyncBanner } from "@/components/auth/guest-sync-banner";
 import { LikeButton } from "@/components/player/like-button";
 import { WatchLaterButton } from "@/components/player/watch-later-button";
 import { Button } from "@/components/ui/button";
@@ -183,6 +185,8 @@ export function MediaPlayer({
   });
   const [episodeQuery, setEpisodeQuery] = useState("");
   const [seasonTab, setSeasonTab] = useState<number | null>(null);
+  // Phones show two lines of the synopsis until asked for the rest.
+  const [synopsisOpen, setSynopsisOpen] = useState(false);
   const episodeListRef = useRef<HTMLDivElement>(null);
 
   const activeEpisode =
@@ -303,7 +307,8 @@ export function MediaPlayer({
       className={cn(
         "shrink-0 bg-[#040406]",
         variant === "page" &&
-          "overflow-hidden rounded-xl shadow-[0_8px_32px_-4px_rgba(0,0,0,0.8),0_0_16px_-2px_rgba(208,188,255,0.2)] ring-1 ring-border"
+          // Edge to edge on phones, like any video app; framed from `sm` up.
+          "-mx-4 overflow-hidden shadow-[0_8px_32px_-4px_rgba(0,0,0,0.8),0_0_16px_-2px_rgba(208,188,255,0.2)] sm:mx-0 sm:rounded-xl sm:ring-1 sm:ring-border"
       )}
     >
       <div className={cn("relative mx-auto aspect-video w-full", videoClassName)}>
@@ -330,11 +335,13 @@ export function MediaPlayer({
   const actionBar = (
     <div
       className={cn(
-        "flex flex-wrap items-center justify-between gap-3 bg-surface-low p-3 sm:px-4",
+        "flex flex-wrap items-center justify-between gap-2 bg-surface-low p-2 sm:gap-3 sm:p-3 sm:px-4",
         variant === "page" ? "mt-3 rounded-xl ring-1 ring-border" : "border-b border-border"
       )}
     >
-      <div className="flex min-w-0 flex-wrap items-center gap-2">
+      {/* Phones move the date into the details below, so prev/next and the
+          actions share one row. */}
+      <div className="hidden min-w-0 flex-wrap items-center gap-2 sm:flex">
         {playingStreamedAt && (
           <span className="label-code flex items-center gap-1.5 rounded-lg bg-surface px-2.5 py-1.5 text-foreground">
             <CalendarDays className="size-3.5 text-primary" />
@@ -352,7 +359,7 @@ export function MediaPlayer({
 
       <div className="flex flex-wrap items-center gap-1.5">
         {episodic && orderedEpisodes.length > 1 && (
-          <div className="flex items-center rounded-lg bg-surface p-0.5">
+          <div className="flex items-center gap-1 rounded-lg bg-surface p-0.5 sm:gap-0">
             <Button
               type="button"
               variant="ghost"
@@ -369,9 +376,9 @@ export function MediaPlayer({
               className="label-code"
             >
               <ChevronLeft className="size-4" />
-              {previousEpisode && <span className="hidden sm:inline">Ep. {previousEpisode.episodeNumber}</span>}
+              {previousEpisode && <span>Ep. {previousEpisode.episodeNumber}</span>}
             </Button>
-            <span className="h-4 w-px bg-outline-variant" aria-hidden />
+            <span className="hidden h-4 w-px bg-outline-variant sm:block" aria-hidden />
             <Button
               type="button"
               variant="ghost"
@@ -383,9 +390,14 @@ export function MediaPlayer({
               title={
                 nextEpisode ? `Siguiente: ${nextEpisode.title} (→)` : "Este es el último episodio"
               }
-              className="label-code"
+              // Phones: the step forward is the one the thumb is after.
+              className={cn(
+                "label-code",
+                nextEpisode &&
+                  "max-sm:bg-primary max-sm:text-primary-foreground max-sm:hover:bg-primary/90"
+              )}
             >
-              {nextEpisode && <span className="hidden sm:inline">Ep. {nextEpisode.episodeNumber}</span>}
+              {nextEpisode && <span>Ep. {nextEpisode.episodeNumber}</span>}
               <ChevronRight className="size-4" />
             </Button>
           </div>
@@ -411,7 +423,8 @@ export function MediaPlayer({
           </>
         )}
         <ShareButton title={item.title} />
-        {headerActions}
+        {/* The size presets only mean something on a wide screen. */}
+        {headerActions && <span className="hidden sm:contents">{headerActions}</span>}
       </div>
     </div>
   );
@@ -419,8 +432,9 @@ export function MediaPlayer({
   const details = (
     <section
       className={cn(
-        "flex flex-col gap-5 bg-surface-low p-4 sm:p-6",
-        variant === "page" && "rounded-xl ring-1 ring-border"
+        "flex flex-col gap-4 bg-surface-low p-4 sm:gap-5 sm:p-6",
+        variant === "page" &&
+          "-mx-4 bg-transparent sm:mx-0 sm:rounded-xl sm:bg-surface-low sm:ring-1 sm:ring-border"
       )}
     >
       <div className="flex gap-5">
@@ -435,6 +449,13 @@ export function MediaPlayer({
         </div>
 
         <div className="flex min-w-0 flex-1 flex-col gap-3">
+          {playingStreamedAt && (
+            <p className="label-code flex items-center gap-1.5 text-foreground sm:hidden">
+              <CalendarDays className="size-3.5 text-primary" />
+              Transmitido: {formatStreamDate(playingStreamedAt)}
+            </p>
+          )}
+
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="label-caps rounded bg-primary px-1.5 py-0.5 text-primary-foreground">
               {MEDIA_TYPE_TAGS[item.type]}
@@ -456,11 +477,11 @@ export function MediaPlayer({
           </div>
 
           <div>
-            <Heading className="text-2xl font-bold leading-tight tracking-tight text-foreground sm:text-3xl">
+            <Heading className="text-2xl font-semibold leading-tight tracking-tight text-foreground sm:text-3xl sm:font-bold">
               {item.title}
             </Heading>
             {episodic && activeEpisode && (
-              <p className="mt-1 text-sm font-medium text-primary sm:text-base">
+              <p className="mt-1 text-base font-medium text-primary">
                 Episodio {activeEpisode.episodeNumber}: {activeEpisode.title}
               </p>
             )}
@@ -503,7 +524,23 @@ export function MediaPlayer({
       {item.description && (
         <div className="flex flex-col gap-1.5">
           <p className="label-caps text-outline">Sinopsis</p>
-          <p className="text-sm leading-relaxed text-foreground/90 sm:text-base">{item.description}</p>
+          <p
+            className={cn(
+              "text-sm leading-relaxed text-foreground/90 sm:line-clamp-none sm:text-base",
+              !synopsisOpen && "line-clamp-2"
+            )}
+          >
+            {item.description}
+          </p>
+          <button
+            type="button"
+            onClick={() => setSynopsisOpen((open) => !open)}
+            aria-expanded={synopsisOpen}
+            className="flex w-fit items-center gap-1 text-sm font-medium text-primary sm:hidden"
+          >
+            {synopsisOpen ? "Leer menos" : "Leer más…"}
+            <ChevronDown className={cn("size-4 transition-transform", synopsisOpen && "rotate-180")} />
+          </button>
         </div>
       )}
 
@@ -522,6 +559,17 @@ export function MediaPlayer({
           <ExternalLink className="size-3.5" />
         </a>
       )}
+
+      {/* No session: nothing watched here is kept. Said where it is felt. */}
+      {likedVideoIds === null && (
+        <GuestSyncBanner
+          className="md:hidden"
+          title="¿Guardar tu progreso?"
+          description="Inicia sesión para sincronizar tu historial."
+          href={`/login?next=${encodeURIComponent(`/v/${item.slug}`)}`}
+          cta="Acceder"
+        />
+      )}
     </section>
   );
 
@@ -529,12 +577,14 @@ export function MediaPlayer({
     <section
       className={cn(
         "flex min-w-0 flex-col gap-3 bg-surface-low p-4",
-        variant === "page" ? "rounded-xl ring-1 ring-border" : "border-t border-border @4xl:border-l @4xl:border-t-0"
+        variant === "page"
+          ? "-mx-4 bg-transparent sm:mx-0 sm:rounded-xl sm:bg-surface-low sm:ring-1 sm:ring-border"
+          : "border-t border-border @4xl:border-l @4xl:border-t-0"
       )}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="flex items-center gap-2 text-lg font-bold text-foreground">
-          <ListVideo className="size-5 text-primary" />
+        <h3 className="flex items-center gap-2 text-xl font-semibold text-foreground sm:text-lg sm:font-bold">
+          <ListVideo className="hidden size-5 text-primary sm:block" />
           Episodios
           <span className="label-code rounded bg-surface-high px-1.5 py-0.5 text-muted-foreground">
             {searching ? `${visibleCount} de ${orderedEpisodes.length}` : orderedEpisodes.length}
@@ -542,7 +592,11 @@ export function MediaPlayer({
         </h3>
 
         {seasons.length > 1 && !searching && (
-          <div className="flex items-center gap-1 rounded-lg bg-surface p-0.5" role="group" aria-label="Temporada">
+          <div
+            className="scrollbar-none -mx-4 flex w-[calc(100%+2rem)] items-center gap-2 overflow-x-auto px-4 sm:mx-0 sm:w-auto sm:gap-1 sm:rounded-lg sm:bg-surface sm:p-0.5"
+            role="group"
+            aria-label="Temporada"
+          >
             {seasons.map((season) => (
               <button
                 key={season.seasonNumber}
@@ -550,13 +604,18 @@ export function MediaPlayer({
                 aria-pressed={season.seasonNumber === shownSeason}
                 onClick={() => setSeasonTab(season.seasonNumber)}
                 className={cn(
-                  "label-code rounded-md px-2 py-1 transition-colors",
+                  "shrink-0 rounded-md px-4 py-2 text-sm font-medium transition-colors sm:px-2 sm:py-1",
                   season.seasonNumber === shownSeason
                     ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground"
+                    : "bg-surface-high text-foreground sm:bg-transparent sm:text-muted-foreground sm:hover:text-foreground"
                 )}
               >
-                T{season.seasonNumber} ({season.episodes.length})
+                <span className="sm:hidden">
+                  Temporada {season.seasonNumber} ({season.episodes.length} eps)
+                </span>
+                <span className="label-code hidden sm:inline">
+                  T{season.seasonNumber} ({season.episodes.length})
+                </span>
               </button>
             ))}
           </div>
@@ -571,7 +630,7 @@ export function MediaPlayer({
             onChange={(event) => setEpisodeQuery(event.target.value)}
             placeholder="Buscar episodio por número, título o fecha…"
             aria-label="Buscar dentro de los episodios"
-            className="h-9 border-transparent bg-surface pl-9 text-sm dark:bg-surface"
+            className="h-10 border-transparent bg-surface pl-9 text-sm dark:bg-surface sm:h-9"
           />
         </div>
       )}
@@ -585,7 +644,9 @@ export function MediaPlayer({
           ref={episodeListRef}
           className={cn(
             "scrollbar-thin -mr-2 flex flex-col gap-4 overflow-y-auto pr-2",
-            variant === "page" ? "max-h-[40rem]" : "max-h-[28rem]"
+            // Phones scroll the page itself: a box inside a scrolling page is
+            // a trap for the thumb.
+            variant === "page" ? "sm:max-h-[40rem]" : "sm:max-h-[28rem]"
           )}
         >
           {listedSeasons.map((season) => (
@@ -603,20 +664,20 @@ export function MediaPlayer({
                     onClick={(event) => selectEpisode(event, episode)}
                     aria-current={current ? "true" : undefined}
                     className={cn(
-                      "group/ep relative flex items-center gap-3 rounded-lg p-2 text-left transition-colors",
+                      "group/ep relative flex items-center gap-3 rounded-xl p-2 text-left transition-colors sm:rounded-lg",
                       current
-                        ? "bg-surface-high before:absolute before:inset-y-0 before:left-0 before:w-1 before:rounded-l-lg before:bg-primary"
+                        ? "bg-surface-high shadow-[0_0_24px_-8px_rgba(208,188,255,0.35)] before:absolute before:inset-y-0 before:left-0 before:w-1 before:rounded-l-lg before:bg-primary sm:shadow-none"
                         : "bg-surface/60 hover:bg-surface-high"
                     )}
                   >
                     {showThumbnails ? (
-                      <span className="relative aspect-video w-24 shrink-0 overflow-hidden rounded-md bg-surface-highest">
+                      <span className="relative aspect-video w-32 shrink-0 overflow-hidden rounded-md bg-surface-highest sm:w-24">
                         {episode.thumbnailUrl ? (
                           <Image
                             src={episode.thumbnailUrl}
                             alt=""
                             fill
-                            sizes="96px"
+                            sizes="128px"
                             className="object-cover"
                           />
                         ) : (
@@ -646,7 +707,7 @@ export function MediaPlayer({
                         <span className="flex min-w-0 items-center gap-1.5">
                           {current && (
                             <span className="label-caps shrink-0 rounded bg-primary px-1 py-px text-[9px] text-primary-foreground">
-                              Reproduciendo
+                              En curso
                             </span>
                           )}
                           <span className="label-caps truncate text-outline">
@@ -661,7 +722,7 @@ export function MediaPlayer({
                       </span>
                       <span
                         className={cn(
-                          "truncate text-sm font-medium text-foreground",
+                          "truncate text-base font-medium text-foreground sm:text-sm",
                           current && "text-primary"
                         )}
                       >
@@ -697,7 +758,7 @@ export function MediaPlayer({
     <div
       className={cn(
         "@container",
-        variant === "page" && "mt-6"
+        variant === "page" && "mt-2 sm:mt-6"
       )}
     >
       <div
@@ -719,7 +780,7 @@ export function MediaPlayer({
     // resolves against a parent capped only by max-height, so it grew to fit
     // everything and the bottom of the list was clipped away.
     return (
-      <div className="flex max-h-[92vh] flex-col overflow-hidden bg-surface-low">
+      <div className="flex max-h-[92vh] flex-col overflow-hidden bg-surface-low max-sm:h-dvh max-sm:max-h-dvh">
         {video}
         <div className="min-h-0 flex-1 overflow-y-auto">
           {actionBar}

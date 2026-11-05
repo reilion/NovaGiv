@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Bookmark, Heart, History, LogOut } from "lucide-react";
+import { Bookmark, Heart, History, LogOut, UserRound } from "lucide-react";
 
 import { Button, buttonVariants } from "@/components/ui/button";
 import { signOut } from "@/lib/actions/auth";
@@ -31,8 +31,18 @@ export async function AccountMenu() {
         >
           Ingresar
         </Link>
-        <Link href="/register" className={buttonVariants({ size: "sm" })}>
+        <Link href="/register" className={cn(buttonVariants({ size: "sm" }), "hidden sm:inline-flex")}>
           Crear cuenta
+        </Link>
+        {/* Phones: the round avatar of the design, standing in for both links. */}
+        <Link
+          href="/login"
+          aria-label="Ingresar"
+          className="flex size-11 items-center justify-center sm:hidden"
+        >
+          <span className="flex size-8 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-[0_0_12px_-2px_rgba(208,188,255,0.4)]">
+            <UserRound className="size-[18px]" />
+          </span>
         </Link>
       </div>
     );
@@ -57,7 +67,7 @@ export async function AccountMenu() {
       {account.role === "admin" && (
         <Link
           href="/admin"
-          className="label-caps rounded-lg bg-surface px-2 py-1.5 text-primary transition-colors hover:bg-surface-high"
+          className="label-caps hidden rounded-lg bg-surface px-2 py-1.5 text-primary transition-colors hover:bg-surface-high sm:inline-block"
         >
           Admin
         </Link>
@@ -65,7 +75,7 @@ export async function AccountMenu() {
 
       <Link
         href="/account"
-        className="flex items-center gap-2 rounded-lg py-1 pl-2 pr-1 transition-colors hover:bg-surface-high"
+        className="flex min-h-11 items-center gap-2 rounded-lg py-1 pl-2 pr-1 transition-colors hover:bg-surface-high"
         title="Mi cuenta"
       >
         <span className="hidden whitespace-nowrap text-right sm:block xl:hidden 2xl:block">
@@ -76,12 +86,13 @@ export async function AccountMenu() {
             {account.role === "admin" ? "NovaGiv Host" : "Miembro"}
           </span>
         </span>
-        <span className="flex size-8 items-center justify-center rounded-full bg-primary/20 text-xs font-bold uppercase text-primary ring-1 ring-primary/40">
+        <span className="flex size-8 items-center justify-center rounded-full bg-primary text-xs font-bold uppercase text-primary-foreground shadow-[0_0_12px_-2px_rgba(208,188,255,0.4)] sm:bg-primary/20 sm:text-primary sm:shadow-none sm:ring-1 sm:ring-primary/40">
           {account.username.slice(0, 2)}
         </span>
       </Link>
 
-      <form action={signOut}>
+      {/* Phones sign out from /account, behind the «Cuenta» tab. */}
+      <form action={signOut} className="hidden sm:block">
         <Button
           type="submit"
           variant="ghost"

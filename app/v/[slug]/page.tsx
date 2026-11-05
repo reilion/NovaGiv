@@ -75,9 +75,24 @@ export default async function MediaPage({ params, searchParams }: MediaPageProps
       savedVideoIds={savedVideoIds}
       initialEpisodeId={initialEpisodeId}
       toolbar={
+        <>
+        {/* Phones: a back arrow and the title, like the top bar of an app. */}
+        <div className="-mx-4 flex items-center gap-3 px-4 py-3 sm:hidden">
+          <Link
+            href="/"
+            aria-label="Volver al catálogo"
+            className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-surface-low text-foreground transition-colors hover:bg-surface"
+          >
+            <ArrowLeft className="size-5" />
+          </Link>
+          <div className="flex min-w-0 flex-col">
+            <p className="truncate text-base font-semibold text-foreground">{item.title}</p>
+            <p className="label-caps truncate text-primary">{MEDIA_TYPE_LABELS[item.type]}</p>
+          </div>
+        </div>
         <nav
           aria-label="Ruta"
-          className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl bg-surface-low p-2 ring-1 ring-border"
+          className="mb-4 hidden flex-wrap items-center gap-x-4 gap-y-2 rounded-xl bg-surface-low p-2 ring-1 ring-border sm:flex"
         >
           <Link href="/" className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "font-semibold")}>
             <ArrowLeft className="size-4" />
@@ -101,6 +116,7 @@ export default async function MediaPage({ params, searchParams }: MediaPageProps
             </li>
           </ol>
         </nav>
+        </>
       }
     />
   );

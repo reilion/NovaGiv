@@ -44,9 +44,9 @@ export function LikeButton({ mediaItemId, episodeId, likes, liked, canLike }: Li
       <Link
         href={href}
         title="Inicia sesión para dar me gusta"
-        className={cn(buttonVariants({ variant: "outline", size: "sm" }), "shrink-0")}
+        className={cn(buttonVariants({ variant: "secondary", size: "sm" }), "shrink-0 bg-surface")}
       >
-        <Heart className="size-4" />
+        <Heart className="size-4 text-live" />
         {state.likes > 0 && <span>{state.likes}</span>}
         <span className="hidden sm:inline">Me gusta</span>
       </Link>
@@ -79,13 +79,16 @@ export function LikeButton({ mediaItemId, episodeId, likes, liked, canLike }: Li
       type="button"
       onClick={toggle}
       disabled={isPending}
-      variant={state.liked ? "secondary" : "outline"}
+      variant="secondary"
       size="sm"
-      className={cn("shrink-0", state.liked && "text-primary")}
+      className={cn(
+        "shrink-0 bg-surface",
+        state.liked && "bg-live text-live-foreground shadow-live hover:bg-live/85"
+      )}
       aria-pressed={state.liked}
       title={error ?? formatLikesLabel(state.likes)}
     >
-      <Heart className={cn("size-4", state.liked && "fill-current")} />
+      <Heart className={cn("size-4", state.liked ? "fill-current" : "text-live")} />
       {state.likes > 0 && <span>{state.likes}</span>}
       <span className="hidden sm:inline">{state.liked ? "Te gusta" : "Me gusta"}</span>
     </Button>

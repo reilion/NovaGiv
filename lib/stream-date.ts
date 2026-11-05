@@ -94,26 +94,32 @@ export function parseStreamTitle(rawTitle: string): ParsedStreamTitle {
 }
 
 /** Formats without going through Date, so no timezone shifting can occur. */
-export function formatStreamDate(value: string | undefined, opts?: { withYear?: boolean }): string {
+export function formatStreamDate(
+  value: string | undefined,
+  opts?: { withYear?: boolean; short?: boolean }
+): string {
   if (!value) return "";
   const match = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (!match) return "";
   const [, year, month, day] = match;
-  const monthName = MONTHS_ES[Number(month) - 1] ?? month;
+  const fullMonth = MONTHS_ES[Number(month) - 1] ?? month;
+  // "sep", "oct": for tight spots like a catalog card.
+  const monthName = opts?.short ? fullMonth.slice(0, 3) : fullMonth;
   const base = `${Number(day)} ${monthName}`;
   return opts?.withYear === false ? base : `${base} ${year}`;
 }
 
 /** "12 marzo 2024 – 8 abril 2024", collapsing to one date when they match. */
-export function formatStreamRange(from?: string, to?: string): string {
+export function formatStreamRange(from?: string, to?: string, opts?: { short?: boolean }): string {
+  const short = opts?.short;
   if (!from && !to) return "";
-  if (!from || !to) return formatStreamDate(from ?? to);
+  if (!from || !to) return formatStreamDate(from ?? to, { short });
 
   const sameDay = from.slice(0, 10) === to.slice(0, 10);
-  if (sameDay) return formatStreamDate(from);
+  if (sameDay) return formatStreamDate(from, { short });
 
   const sameYear = from.slice(0, 4) === to.slice(0, 4);
-  return `${formatStreamDate(from, { withYear: !sameYear })} – ${formatStreamDate(to)}`;
+  return `${formatStreamDate(from, { withYear: !sameYear, short })} – ${formatStreamDate(to, { short })}`;
 }
 
 export function streamYear(value: string | undefined): number | undefined {

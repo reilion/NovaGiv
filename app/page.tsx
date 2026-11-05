@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 
+import { CatalogGuestBanner } from "@/components/auth/catalog-guest-banner";
 import { FilterBarContainer } from "@/components/filters/filter-bar-container";
 import { FilterBarSkeleton } from "@/components/filters/filter-bar-skeleton";
 import { CatalogSection } from "@/components/media/catalog-section";
@@ -45,6 +46,10 @@ export default async function HomePage({ searchParams }: HomePageProps) {
 
         <Suspense fallback={<FilterBarSkeleton />}>
           <FilterBarContainer />
+        </Suspense>
+
+        <Suspense fallback={null}>
+          <CatalogGuestBanner />
         </Suspense>
 
         <Suspense key={suspenseKey} fallback={<MediaGridSkeleton />}>

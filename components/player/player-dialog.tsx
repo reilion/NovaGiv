@@ -46,7 +46,15 @@ export function PlayerDialog({
       }}
     >
       <DialogContent
-        className={cn("gap-0 overflow-hidden p-0", sizePreset.width)}
+        className={cn(
+          "gap-0 overflow-hidden bg-surface-low p-0 shadow-[0_0_48px_-12px_rgba(208,188,255,0.35)] ring-border",
+          // Phones: the whole screen, like the title's own page — a floating
+          // card with margins leaves no room for the video and the list.
+          "max-sm:inset-0 max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-none max-sm:ring-0",
+          // The close button sits over the ok.ru frame: give it a backdrop.
+          "[&>[data-slot=dialog-close]]:z-10 [&>[data-slot=dialog-close]]:bg-black/60 [&>[data-slot=dialog-close]]:text-foreground [&>[data-slot=dialog-close]]:backdrop-blur-md",
+          sizePreset.width
+        )}
         showCloseButton
         // Without this, focus lands on the first tabbable element — which is
         // the ok.ru iframe. Every key from then on, Escape included, belongs to

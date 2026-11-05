@@ -26,6 +26,14 @@ export const FILTER_TABS = ALL_FILTER_TABS.filter(
   (tab) => tab.value === "all" || !HIDDEN_MEDIA_TYPES.includes(tab.value)
 );
 
+/**
+ * The hidden types, still shown — greyed out with a «Pronto» tag — in the
+ * header and the catalog tabs, so visitors know they are on their way.
+ */
+export const UPCOMING_FILTER_TABS = ALL_FILTER_TABS.filter(
+  (tab) => tab.value !== "all" && HIDDEN_MEDIA_TYPES.includes(tab.value)
+);
+
 export const SORT_OPTIONS: { value: SortOption; label: string }[] = [
   { value: "recent", label: "Más recientes" },
   { value: "streamed", label: "Stream más reciente" },
@@ -68,3 +76,6 @@ export const VIEW_COUNTS_ADMIN_ONLY = true;
  * catalogue.
  */
 export const OKRU_SYNC_CHANNEL_LIMIT = 15;
+
+/** The id of the catalog's search box, so the phone header's search icon can jump to it. */
+export const CATALOG_SEARCH_ID = "catalog-search";

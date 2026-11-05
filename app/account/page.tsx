@@ -35,7 +35,7 @@ export default async function AccountPage() {
   const joinedAt = formatJoinDate(account.createdAt);
 
   return (
-    <div className="mx-auto w-full max-w-2xl flex-1 px-4 py-8 sm:px-6 lg:px-8">
+    <div className="mx-auto w-full max-w-3xl flex-1 px-4 py-8 sm:px-6 lg:px-8">
       <Link
         href="/"
         className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "-ml-2")}
@@ -44,11 +44,16 @@ export default async function AccountPage() {
         Volver al catálogo
       </Link>
 
-      <header className="mt-4 flex flex-wrap items-center justify-between gap-3">
+      <header className="relative mt-6 flex flex-wrap items-center justify-between gap-4 overflow-hidden rounded-2xl bg-surface-low p-6 ring-1 ring-border">
+        <div className="pointer-events-none absolute -right-20 -top-20 size-64 rounded-full bg-primary/10 blur-3xl" />
+        <div className="relative flex items-center gap-4">
+          <span className="flex size-14 shrink-0 items-center justify-center rounded-xl bg-primary/20 text-lg font-bold uppercase text-primary ring-1 ring-primary/40">
+            {account.username.slice(0, 2)}
+          </span>
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-              {account.username}
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">
+              @{account.username}
             </h1>
             {account.role === "admin" && (
               <Badge variant="secondary">
@@ -57,12 +62,13 @@ export default async function AccountPage() {
               </Badge>
             )}
           </div>
-          <p className="text-sm text-muted-foreground">
-            {joinedAt ? `En NovaGiv desde el ${joinedAt}.` : "Tu cuenta de NovaGiv."}
+          <p className="label-code text-outline">
+            {joinedAt ? `En NovaGiv desde el ${joinedAt}` : "Tu cuenta de NovaGiv"}
           </p>
         </div>
+        </div>
 
-        <div className="flex items-center gap-2">
+        <div className="relative flex items-center gap-2">
           {account.role === "admin" && (
             <Link href="/admin" className={buttonVariants({ variant: "outline", size: "sm" })}>
               Panel
@@ -81,8 +87,8 @@ export default async function AccountPage() {
         <Link
           href="/me-gusta"
           className={cn(
-            buttonVariants({ variant: "outline" }),
-            "h-auto justify-start gap-3 px-4 py-3"
+            buttonVariants({ variant: "secondary" }),
+            "h-auto justify-start gap-3 rounded-xl bg-surface-low px-4 py-3 ring-1 ring-border hover:bg-surface"
           )}
         >
           <Heart className="size-5 text-primary" />
@@ -94,8 +100,8 @@ export default async function AccountPage() {
         <Link
           href="/ver-despues"
           className={cn(
-            buttonVariants({ variant: "outline" }),
-            "h-auto justify-start gap-3 px-4 py-3"
+            buttonVariants({ variant: "secondary" }),
+            "h-auto justify-start gap-3 rounded-xl bg-surface-low px-4 py-3 ring-1 ring-border hover:bg-surface"
           )}
         >
           <Bookmark className="size-5 text-primary" />
@@ -107,8 +113,8 @@ export default async function AccountPage() {
         <Link
           href="/historial"
           className={cn(
-            buttonVariants({ variant: "outline" }),
-            "h-auto justify-start gap-3 px-4 py-3"
+            buttonVariants({ variant: "secondary" }),
+            "h-auto justify-start gap-3 rounded-xl bg-surface-low px-4 py-3 ring-1 ring-border hover:bg-surface"
           )}
         >
           <Clock className="size-5 text-primary" />

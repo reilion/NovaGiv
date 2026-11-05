@@ -1,22 +1,17 @@
 import Image from "next/image";
 import Link from "next/link";
-import {
-  CalendarDays,
-  Check,
-  Clock,
-  Eye,
-  Heart,
-  Layers,
-  Play,
-  Search,
-  Sparkles,
-} from "lucide-react";
+import { CalendarDays, Check, Eye, Heart, Play, Search, Sparkles } from "lucide-react";
 
 import { AspectRatio } from "@/components/ui/aspect-ratio";
-import { Badge } from "@/components/ui/badge";
 import { formatStreamRange } from "@/lib/stream-date";
 import { formatLikesLabel, formatViews, formatViewsLabel } from "@/lib/text";
-import { isEpisodic, MEDIA_STATUS_LABELS, type CatalogCard } from "@/types/media";
+import { cn } from "@/lib/utils";
+import {
+  isEpisodic,
+  MEDIA_STATUS_LABELS,
+  MEDIA_TYPE_TAGS,
+  type CatalogCard,
+} from "@/types/media";
 
 interface MediaCardProps {
   /**
@@ -29,8 +24,8 @@ interface MediaCardProps {
 
 /**
  * Single card used for every media type. Movies/specials/karaokes show a
- * duration badge and open the player directly; series/anime show an episode
- * count + status and open the same player with its episode list.
+ * duration and open the player directly; series/anime show an episode count +
+ * status and open the same player with its episode list.
  *
  * A plain link to the title's own page: from here that page is intercepted and
  * drawn as a dialog over the catalog (app/@modal), so the URL is shareable
@@ -39,6 +34,7 @@ interface MediaCardProps {
 export function MediaCard({ item }: MediaCardProps) {
   const episodic = isEpisodic(item.type);
   const { episodeCount, matchedEpisodes, views, likes, watched, isNew } = item;
+  const matched = matchedEpisodes > 0;
 
   // A collection can be here because one of its streams matched, not its title.
   // Saying which, and opening straight at it, is the difference between finding
@@ -46,121 +42,113 @@ export function MediaCard({ item }: MediaCardProps) {
   const href = item.matchedEpisodeRef
     ? `/v/${item.slug}?ep=${item.matchedEpisodeRef}`
     : `/v/${item.slug}`;
-  const streamRange = formatStreamRange(item.firstStreamedAt, item.lastStreamedAt);
+  const streamRange = formatStreamRange(item.firstStreamedAt, item.lastStreamedAt, { short: true });
+  const genreLine = item.genres.slice(0, 2).join(" / ");
+
+  const meta = [
+    item.year,
+    episodic && item.status ? MEDIA_STATUS_LABELS[item.status] : MEDIA_TYPE_TAGS[item.type],
+  ].filter(Boolean);
 
   return (
     <Link
       href={href}
       scroll={false}
-      className="group/card flex flex-col overflow-hidden rounded-xl bg-card ring-1 ring-foreground/10 transition-transform duration-200 hover:-translate-y-1 hover:shadow-glow focus-visible:-translate-y-1 focus-visible:shadow-glow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className={cn(
+        "group/card flex flex-col overflow-hidden rounded-xl bg-surface-low ring-1 ring-border transition-all duration-200 hover:-translate-y-1 hover:shadow-glow focus-visible:-translate-y-1 focus-visible:shadow-glow focus-visible:outline-none",
+        matched && "ring-neon/50"
+      )}
     >
-      <AspectRatio ratio={2 / 3} className="bg-muted">
+      <AspectRatio ratio={2 / 3} className="overflow-hidden bg-surface">
         <Image
           src={item.posterUrl}
           alt={item.title}
           fill
           sizes="(max-width: 640px) 45vw, (max-width: 1024px) 25vw, 16vw"
-          className="object-cover transition-transform duration-300 group-hover/card:scale-105"
+          className="object-cover transition-transform duration-300 group-hover/card:scale-[1.03]"
         />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/10 to-transparent" />
 
-        <div className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-all duration-200 group-hover/card:bg-black/40 group-hover/card:opacity-100 group-focus-visible/card:bg-black/40 group-focus-visible/card:opacity-100">
-          <span className="flex size-11 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-glow">
+        <div className="absolute inset-0 flex items-center justify-center bg-surface-lowest/0 opacity-0 transition-all duration-200 group-hover/card:bg-surface-lowest/40 group-hover/card:opacity-100 group-focus-visible/card:bg-surface-lowest/40 group-focus-visible/card:opacity-100">
+          <span className="flex size-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-glow">
             <Play className="size-5 fill-current" />
           </span>
         </div>
 
-        {/* Same corner for both: a title already opened is not news any more,
-            so "Visto" wins (the catalog never marks a watched title new). */}
-        {watched ? (
-          <div className="absolute right-2 top-2 flex items-center gap-1 rounded-md bg-black/60 px-1.5 py-0.5 text-[10px] text-foreground backdrop-blur-sm">
-            <Check className="size-3" />
-            Visto
-          </div>
-        ) : (
-          isNew && (
-            <div className="absolute right-2 top-2 flex items-center gap-1 rounded-md bg-primary px-1.5 py-0.5 text-[10px] font-semibold text-primary-foreground shadow-glow">
+        <div className="absolute inset-x-2 top-2 flex items-start justify-between gap-1">
+          {genreLine ? (
+            <span className="label-caps min-w-0 truncate rounded bg-surface-lowest/80 px-1.5 py-1 text-[10px] text-foreground backdrop-blur-md normal-case tracking-wide">
+              {genreLine}
+            </span>
+          ) : (
+            <span />
+          )}
+
+          {/* Same corner for all: a title already opened is not news any more,
+              so "Visto" wins (the catalog never marks a watched title new). */}
+          {watched ? (
+            <span className="label-caps flex shrink-0 items-center gap-1 rounded bg-surface-lowest/80 px-1.5 py-1 text-[10px] text-muted-foreground backdrop-blur-md">
+              <Check className="size-3" />
+              Visto
+            </span>
+          ) : isNew ? (
+            <span className="label-caps flex shrink-0 items-center gap-1 rounded bg-primary px-1.5 py-1 text-[10px] text-primary-foreground shadow-glow">
               <Sparkles className="size-3" />
               Nuevo
-            </div>
-          )
-        )}
-
-        <div className="absolute left-2 top-2 flex flex-wrap gap-1">
-          {item.genres.slice(0, 2).map((genre) => (
-            <Badge
-              key={genre}
-              variant="secondary"
-              className="bg-black/60 text-[10px] text-foreground backdrop-blur-sm"
-            >
-              {genre}
-            </Badge>
-          ))}
+            </span>
+          ) : matched ? (
+            <span className="label-caps shrink-0 rounded bg-neon px-1.5 py-1 text-[10px] text-neon-foreground">
+              Coincidencia
+            </span>
+          ) : null}
         </div>
 
-        {/* Hidden at zero: a catalog that has just gone live would otherwise
-            show a "0" on every poster. Both counters share one pill so a liked
-            title doesn't grow a third badge over the artwork. */}
-        {((views ?? 0) > 0 || likes > 0) && (
-          <div className="absolute bottom-2 left-2 flex items-center gap-2 rounded-md bg-black/60 px-1.5 py-0.5 text-[11px] text-foreground backdrop-blur-sm">
-            {views !== undefined && views > 0 && (
-              <span className="flex items-center gap-1" title={formatViewsLabel(views)}>
-                <Eye className="size-3" />
-                {formatViews(views)}
-              </span>
-            )}
+        <div className="label-code absolute inset-x-2 bottom-2 flex items-center justify-between gap-2 text-foreground">
+          {/* Hidden at zero: a catalog that has just gone live would otherwise
+              show a "0" on every poster. */}
+          <span className="flex items-center gap-2">
             {likes > 0 && (
               <span className="flex items-center gap-1" title={formatLikesLabel(likes)}>
-                <Heart className="size-3" />
+                <Heart className="size-3.5 fill-live text-live" />
                 {formatViews(likes)}
               </span>
             )}
-          </div>
-        )}
-
-        <div className="absolute bottom-2 right-2 flex items-center gap-1 rounded-md bg-black/60 px-1.5 py-0.5 text-[11px] text-foreground backdrop-blur-sm">
-          {episodic ? (
-            <>
-              <Layers className="size-3" />
-              {episodeCount} ep.
-            </>
-          ) : (
-            item.duration && (
-              <>
-                <Clock className="size-3" />
-                {item.duration}
-              </>
-            )
-          )}
+            {views !== undefined && views > 0 && (
+              <span className="flex items-center gap-1 text-muted-foreground" title={formatViewsLabel(views)}>
+                <Eye className="size-3.5" />
+                {formatViews(views)}
+              </span>
+            )}
+          </span>
+          <span className="shrink-0 font-semibold">
+            {episodic ? `${episodeCount} ep.` : item.duration}
+          </span>
         </div>
       </AspectRatio>
 
-      <div className="flex flex-1 flex-col gap-0.5 p-2.5">
-        <h3 className="line-clamp-2 text-sm font-medium leading-snug text-foreground">
+      <div className="flex flex-1 flex-col p-3">
+        <h3 className="line-clamp-2 text-sm font-semibold leading-snug text-foreground">
           {item.title}
         </h3>
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          {item.year && <span>{item.year}</span>}
-          {episodic && item.status && (
-            <>
-              {item.year && <span aria-hidden>·</span>}
-              <span>{MEDIA_STATUS_LABELS[item.status]}</span>
-            </>
-          )}
-        </div>
-        {streamRange && (
-          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-            <CalendarDays className="size-3 shrink-0" />
-            <span className="truncate">{streamRange}</span>
-          </div>
+        {meta.length > 0 && (
+          <p className="mt-0.5 text-xs text-muted-foreground">{meta.join(" • ")}</p>
         )}
-        {matchedEpisodes > 0 && (
-          <div className="flex items-center gap-1 text-xs text-primary">
+
+        {matched && (
+          <p className="label-code mt-2 flex items-center gap-1 text-neon">
             <Search className="size-3 shrink-0" />
             <span className="truncate">
-              {matchedEpisodes === 1
-                ? "1 episodio coincide"
-                : `${matchedEpisodes} episodios coinciden`}
+              {matchedEpisodes === 1 ? "1 episodio coincide" : `${matchedEpisodes} episodios coinciden`}
             </span>
+          </p>
+        )}
+
+        {streamRange && (
+          <div className="mt-auto pt-2">
+            <p className="label-code flex items-start gap-1.5 border-t border-border pt-2 text-primary">
+              <CalendarDays className="mt-px size-3.5 shrink-0" />
+              <span className="line-clamp-2">Stream: {streamRange}</span>
+            </p>
           </div>
         )}
       </div>

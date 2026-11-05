@@ -2,26 +2,22 @@
 
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Search, SlidersHorizontal, X } from "lucide-react";
+import { RotateCcw, Search, X } from "lucide-react";
 
 import {
   FilterControls,
   type ActiveFilters,
   type FilterUpdate,
 } from "@/components/filters/filter-controls";
-import { Button } from "@/components/ui/button";
+import { FilterSheet } from "@/components/filters/filter-sheet";
 import { Input } from "@/components/ui/input";
 import {
-  Sheet,
-  SheetClose,
-  SheetContent,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FILTER_TABS, MONTHS, SORT_OPTIONS } from "@/lib/constants";
+  CATALOG_SEARCH_ID,
+  FILTER_TABS,
+  MONTHS,
+  SORT_OPTIONS,
+  UPCOMING_FILTER_TABS,
+} from "@/lib/constants";
 import { DEFAULT_SORT, type GenreCount } from "@/lib/media-filter";
 import { formatStreamDate } from "@/lib/stream-date";
 import { cn } from "@/lib/utils";
@@ -175,31 +171,58 @@ export function FilterBar({ streamYears = [], genres = [] }: FilterBarProps) {
   return (
     <div
       className={cn(
-        "sticky top-0 z-30 -mx-4 border-b border-border/60 bg-background/85 px-4 py-4 backdrop-blur-md transition-opacity supports-backdrop-filter:bg-background/70 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8",
+        "sticky top-[65px] z-30 -mx-4 mt-2 flex flex-col gap-2 border-b border-border bg-background/95 px-4 py-2 backdrop-blur-xl transition-opacity supports-backdrop-filter:bg-background/80 sm:-mx-6 sm:mt-8 sm:gap-3 sm:px-6 sm:py-4 lg:-mx-8 lg:px-8",
         isPending && "opacity-70"
       )}
     >
-      <Tabs
-        value={active.tab}
-        onValueChange={(value) => updateParams({ tab: value === "all" ? null : String(value) })}
+      <div
+        className="scrollbar-none -mx-4 order-2 flex items-center gap-1.5 overflow-x-auto px-4 py-0.5 sm:order-1 sm:-mx-1 sm:gap-2 sm:px-1 sm:pb-0.5 sm:pt-0"
+        role="group"
+        aria-label="Tipo de contenido"
       >
-        <TabsList variant="line" className="w-full justify-start overflow-x-auto">
-          {FILTER_TABS.map((tab) => (
-            <TabsTrigger key={tab.value} value={tab.value} className="shrink-0">
+        {FILTER_TABS.map((tab) => {
+          const selected = active.tab === tab.value;
+          return (
+            <button
+              key={tab.value}
+              type="button"
+              aria-pressed={selected}
+              onClick={() => updateParams({ tab: tab.value === "all" ? null : tab.value })}
+              className={cn(
+                "shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold transition-all sm:rounded-lg sm:px-3.5 sm:text-sm sm:font-medium",
+                selected
+                  ? "bg-primary text-primary-foreground shadow-[0_0_16px_-4px_rgba(208,188,255,0.5)]"
+                  : "bg-surface-low text-muted-foreground hover:bg-surface hover:text-foreground"
+              )}
+            >
               {tab.label}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-      </Tabs>
+            </button>
+          );
+        })}
+        {UPCOMING_FILTER_TABS.map((tab) => (
+          <span
+            key={tab.value}
+            className="flex shrink-0 cursor-default items-center gap-1.5 rounded-full bg-surface-low px-3 py-1.5 text-xs font-semibold text-muted-foreground/50 sm:rounded-lg sm:bg-transparent sm:text-sm sm:font-medium"
+            title="Muy pronto en el catálogo"
+          >
+            {tab.label}
+            <span className="label-caps rounded bg-surface-highest px-1.5 py-0.5 text-[10px] normal-case text-outline">
+              Pronto
+            </span>
+          </span>
+        ))}
+      </div>
 
-      <div className="mt-3 flex items-center gap-2">
-        <div className="relative min-w-0 flex-1 sm:max-w-md">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+      <div className="order-1 flex items-center gap-1 sm:order-2 sm:flex-wrap sm:gap-2">
+        <div className="relative min-w-0 flex-1 sm:min-w-72">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-outline" />
           <Input
+            id={CATALOG_SEARCH_ID}
+            type="search"
             value={searchValue}
             onChange={(event) => setSearchValue(event.target.value)}
-            placeholder="Buscar título, episodio o fecha…"
-            className="pl-8 pr-8"
+            placeholder="Buscar por título, ep. o fecha…"
+            className="h-10 rounded-xl border-transparent bg-surface pl-9 pr-9 shadow-inner dark:bg-surface sm:rounded-lg sm:bg-surface-low sm:shadow-none sm:dark:bg-surface-low [&::-webkit-search-cancel-button]:hidden"
             aria-label="Buscar contenido"
           />
           {searchValue && (
@@ -207,7 +230,7 @@ export function FilterBar({ streamYears = [], genres = [] }: FilterBarProps) {
               type="button"
               onClick={() => setSearchValue("")}
               aria-label="Borrar búsqueda"
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-outline transition-colors hover:text-foreground"
             >
               <X className="size-4" />
             </button>
@@ -216,63 +239,42 @@ export function FilterBar({ streamYears = [], genres = [] }: FilterBarProps) {
 
         {/* Phones only: everything but the tabs and the search folds in here, so
             the bar stops eating half the screen before a single poster shows. */}
-        <Sheet>
-          <SheetTrigger
-            render={<Button variant="outline" className="shrink-0 sm:hidden" />}
-            aria-label="Abrir filtros"
-          >
-            <SlidersHorizontal className="size-4" />
-            Filtros
-            {chips.length > 0 && (
-              <span className="flex size-5 items-center justify-center rounded-full bg-primary text-[11px] font-medium text-primary-foreground">
-                {chips.length}
-              </span>
-            )}
-          </SheetTrigger>
+        <FilterSheet
+          {...controlProps}
+          activeCount={chips.length}
+          onReset={clearAll}
+          className="sm:hidden"
+        />
 
-          <SheetContent side="bottom" className="max-h-[85vh] overflow-y-auto">
-            <SheetHeader>
-              <SheetTitle>Filtros</SheetTitle>
-            </SheetHeader>
-
-            <div className="px-4">
-              <FilterControls {...controlProps} stacked />
-            </div>
-
-            <SheetFooter className="flex-row gap-2">
-              {chips.length > 0 && (
-                <Button type="button" variant="outline" className="flex-1" onClick={clearAll}>
-                  Limpiar todo
-                </Button>
-              )}
-              <SheetClose render={<Button className="flex-1" />}>Ver resultados</SheetClose>
-            </SheetFooter>
-          </SheetContent>
-        </Sheet>
-      </div>
-
-      <div className="mt-3 hidden sm:flex">
-        <FilterControls {...controlProps} />
+        <div className="hidden sm:contents">
+          <FilterControls {...controlProps} />
+        </div>
       </div>
 
       {showChipsRow && (
-        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+        <div className="scrollbar-none order-3 -mx-4 flex items-center gap-1.5 overflow-x-auto px-4 sm:mx-0 sm:flex-wrap sm:gap-2 sm:px-0">
+          <span className="label-caps hidden text-outline sm:inline">Filtros activos:</span>
           {chips.map((chip) => (
             <button
               key={chip.key}
               type="button"
               onClick={() => updateParams(chip.clear)}
               aria-label={`Quitar filtro: ${chip.label}`}
-              className="inline-flex items-center gap-1 rounded-full bg-secondary py-1 pl-2.5 pr-1.5 text-xs text-secondary-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+              className="label-code inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-surface-highest py-1 pl-2.5 pr-1.5 text-neon transition-colors hover:bg-surface-high sm:rounded sm:bg-surface sm:pl-2 sm:text-primary"
             >
               {chip.label}
-              <X className="size-3" />
+              <X className="size-3 text-muted-foreground" />
             </button>
           ))}
 
-          <Button type="button" variant="ghost" size="sm" onClick={clearAll}>
+          <button
+            type="button"
+            onClick={clearAll}
+            className="label-code inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-1 text-tertiary transition-colors hover:text-foreground sm:text-neon"
+          >
+            <RotateCcw className="size-3" />
             Limpiar todo
-          </Button>
+          </button>
         </div>
       )}
     </div>

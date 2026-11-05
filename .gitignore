@@ -43,3 +43,4 @@ cookies.json
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+stitch_novagiv_stream_vault

@@ -4,7 +4,6 @@ import type { ReactNode } from "react";
 
 import { MediaPlayer } from "@/components/player/media-player";
 import { PLAYER_SIZES, PlayerSizeMenu, usePlayerSize } from "@/components/player/player-size";
-import { cn } from "@/lib/utils";
 import type { MediaItem } from "@/types/media";
 
 interface PlayerPageProps {
@@ -17,8 +16,10 @@ interface PlayerPageProps {
 }
 
 /**
- * The player on its own page, with the same size menu as the dialog: the column
- * widens with the size picked, the way the modal does.
+ * The player on its own page, with the same size menu as the dialog. The page
+ * keeps its full width — details and the episode list sit side by side under
+ * the picture — and the size picked caps the picture itself, letterboxed on the
+ * black stage.
  */
 export function PlayerPage({
   item,
@@ -31,7 +32,7 @@ export function PlayerPage({
   const sizePreset = PLAYER_SIZES[size];
 
   return (
-    <div className={cn("mx-auto w-full flex-1 px-4 py-6 sm:px-6 lg:px-8", sizePreset.width)}>
+    <div className="mx-auto w-full max-w-7xl flex-1 px-4 pb-6 sm:px-6 sm:py-6 lg:px-8">
       {toolbar}
 
       <MediaPlayer

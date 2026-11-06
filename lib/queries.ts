@@ -9,6 +9,7 @@ import { collectGenres, type GenreCount } from "@/lib/media-filter";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
 import { MOCK_MEDIA, MOCK_STREAMER } from "@/lib/mock-data";
+import { getTwitchLiveStatus, twitchLoginFromUrl } from "@/lib/twitch";
 import { withoutViewCounts, type Episode, type MediaItem } from "@/types/media";
 import type { StreamerProfile } from "@/types/streamer";
 
@@ -535,7 +536,23 @@ export async function getViewerVideoIds(item: MediaItem): Promise<ViewerVideoIds
   };
 }
 
-/** Streamer profile/socials. Swap for a `streamer_profile` table when one exists. */
-export async function getStreamerProfile(): Promise<StreamerProfile> {
-  return MOCK_STREAMER;
-}
+/**
+ * Streamer profile/socials, with the live state read from Twitch (see
+ * lib/twitch.ts). Wrapped in `cache` because the layout, the header and the
+ * home page all ask for it in the same render.
+ *
+ * Profile data itself is still the static one: swap for a `streamer_profile`
+ * table when one exists.
+ */
+export const getStreamerProfile = cache(async function getStreamerProfile(): Promise<StreamerProfile> {
+  const twitchUrl = MOCK_STREAMER.socials.find((social) => social.platform === "twitch")?.url;
+  const login = process.env.TWITCH_CHANNEL || twitchLoginFromUrl(twitchUrl);
+  const live = await getTwitchLiveStatus(login);
+
+  return {
+    ...MOCK_STREAMER,
+    isLive: live.isLive,
+    // While live the header shows what is on right now; offline, the usual line.
+    liveTitle: live.isLive ? (live.title ?? MOCK_STREAMER.liveTitle) : MOCK_STREAMER.liveTitle,
+  };
+});

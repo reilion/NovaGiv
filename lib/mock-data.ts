@@ -18,7 +18,7 @@ export const MOCK_STREAMER: StreamerProfile = {
   socials: [
     { platform: "twitch", url: "https://twitch.tv/novagiv" },
     { platform: "youtube", url: "https://youtube.com/@novagiv" },
-    { platform: "website", url: "https://novagiv.vercel.app/" },
+    { platform: "website", url: "https://novagiv.zerowand.dev/" },
     { platform: "discord", url: "https://discord.gg/novagiv" },
     { platform: "x", url: "https://x.com/novagiv" },
   ],

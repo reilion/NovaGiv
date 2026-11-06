@@ -23,7 +23,7 @@ export const isTurnstileEnabled = Boolean(TURNSTILE_SITE_KEY);
  * on the sign-up form cannot be spent on the sign-in form. One type shared by
  * both ends, so the pair cannot drift apart.
  */
-export type TurnstileAction = "login" | "register";
+export type TurnstileAction = "login" | "register" | "recover";
 
 /**
  * The field Turnstile writes its token into. This is the name the widget uses

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, JetBrains_Mono } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
 
 import { HideOnRoutes } from "@/components/layout/hide-on-routes";
 import { MobileTabBar } from "@/components/layout/mobile-tab-bar";
@@ -77,6 +78,7 @@ export default async function RootLayout({ children, modal }: LayoutProps<"/">) 
           <MobileTabBar twitchUrl={twitch?.url} isLive={profile.isLive} />
         </HideOnRoutes>
         {modal}
+        <Analytics />
       </body>
     </html>
   );

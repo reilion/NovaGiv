@@ -17,10 +17,8 @@ export const MOCK_STREAMER: StreamerProfile = {
   bio: "Resubidos organizados de mis transmisiones: películas, series, anime y votaciones.",
   socials: [
     { platform: "twitch", url: "https://twitch.tv/novagiv" },
-    { platform: "youtube", url: "https://youtube.com/@novagiv" },
     { platform: "website", url: "https://novagiv.zerowand.dev/" },
-    { platform: "discord", url: "https://discord.gg/novagiv" },
-    { platform: "x", url: "https://x.com/novagiv" },
+    { platform: "discord", url: "https://discord.gg/mwrnNeNnaC" },
   ],
 };
 

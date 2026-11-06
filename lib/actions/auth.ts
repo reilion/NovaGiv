@@ -232,3 +232,99 @@ export async function signOut() {
   revalidatePath("/", "layout");
   redirect("/");
 }
+
+/** Reset emails one address may ask for. Each one is a real email sent. */
+const RESET_PER_IP: RateLimitRule = { limit: 5, windowMs: 60 * 60_000 };
+
+/** And reset emails one account may receive, whoever asks: no inbox flooding. */
+const RESET_PER_ACCOUNT: RateLimitRule = { limit: 3, windowMs: 60 * 60_000 };
+
+/**
+ * Sends the password-reset email. Takes the username or the email, since
+ * people sign in with the first and may only remember one of the two. The
+ * answer is the same whether or not an account was found — otherwise this form
+ * would tell anyone which usernames and addresses are registered.
+ */
+export async function requestPasswordReset(
+  _prevState: AuthState | undefined,
+  formData: FormData
+): Promise<AuthState> {
+  if (!isSupabaseConfigured) return { error: NO_SUPABASE_ERROR };
+
+  const identifier = String(formData.get("identifier") ?? "").trim();
+  if (!identifier) return { error: "Ingresa tu usuario o tu correo." };
+
+  const isEmail = identifier.includes("@");
+  const key = isEmail ? identifier.toLowerCase() : normalizeUsername(identifier);
+  if (isEmail) {
+    const invalid = validateEmail(key);
+    if (invalid) return { error: invalid };
+  }
+
+  const address = await callerAddress();
+  const blocked = firstBlocked([
+    address ? rateLimit(`reset:ip:${address}`, RESET_PER_IP) : null,
+    rateLimit(`reset:account:${key}`, RESET_PER_ACCOUNT),
+  ]);
+  if (blocked) return { error: retryAfterMessage(blocked.retryAfterSeconds) };
+
+  const captcha = await verifyTurnstile(formData.get(TURNSTILE_FIELD), "recover");
+  if (!captcha.ok) return { error: captcha.error };
+
+  const email = isEmail ? key : (await findAccountByUsername(key))?.email;
+
+  if (email) {
+    const supabase = await createClient();
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${await getSiteUrl()}/auth/confirm?next=/restablecer`,
+    });
+    // Logged, not shown: the reply below must not differ for an account that
+    // exists. A failure here is ours (Resend, the hook), not the visitor's.
+    if (error) console.error("requestPasswordReset —", error.message);
+  }
+
+  return {
+    notice:
+      "Si existe una cuenta con esos datos, te enviamos un correo con un enlace para elegir una contraseña nueva. Revisa también la carpeta de spam.",
+  };
+}
+
+/**
+ * Sets the new password after the reset link. That link went through
+ * app/auth/confirm, which signed the person in — so the session itself is the
+ * proof, and no current password is asked for.
+ */
+export async function resetPassword(
+  _prevState: AuthState | undefined,
+  formData: FormData
+): Promise<AuthState> {
+  if (!isSupabaseConfigured) return { error: NO_SUPABASE_ERROR };
+
+  const password = String(formData.get("password") ?? "");
+  const passwordConfirm = String(formData.get("passwordConfirm") ?? "");
+
+  const invalid = validatePassword(password);
+  if (invalid) return { error: invalid };
+  if (password !== passwordConfirm) return { error: "Las contraseñas no coinciden." };
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { error: "El enlace caducó. Pide uno nuevo desde «¿Olvidaste tu contraseña?»." };
+  }
+
+  const { error } = await supabase.auth.updateUser({ password });
+  if (error) {
+    const message = error.message.toLowerCase();
+    if (message.includes("different")) {
+      return { error: "La nueva contraseña debe ser distinta de la anterior." };
+    }
+    if (message.includes("password")) return { error: "Esa contraseña es demasiado débil." };
+    return { error: "No pudimos cambiar la contraseña. Inténtalo de nuevo." };
+  }
+
+  revalidatePath("/", "layout");
+  redirect("/");
+}

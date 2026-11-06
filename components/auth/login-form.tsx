@@ -103,7 +103,15 @@ export function LoginForm({ next, warning }: { next?: string; warning?: string }
           </div>
 
           <div className="flex flex-col gap-2">
-            <FieldLabel htmlFor="password" icon={Lock}>
+            <FieldLabel
+              htmlFor="password"
+              icon={Lock}
+              aside={
+                <Link href="/recuperar" className="text-xs font-medium text-primary hover:underline">
+                  ¿Olvidaste tu contraseña?
+                </Link>
+              }
+            >
               Contraseña
             </FieldLabel>
             <PasswordInput

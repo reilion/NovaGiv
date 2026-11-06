@@ -48,7 +48,9 @@ export const config = {
   // needs the session cookie refreshed so a logged-in visitor browsing the
   // catalog is not silently signed out. updateSession bails out early when the
   // request carries no session cookie at all.
+  // api/auth/email-hook is Supabase calling us server to server: no session to
+  // refresh, and the bot guard would turn its HTTP client away.
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|api/auth/email-hook|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };

@@ -24,7 +24,15 @@ export function ProfileHeader({ profile }: { profile: StreamerProfile }) {
       <div className="relative overflow-hidden rounded-2xl bg-surface-low shadow-2xl ring-1 ring-border">
         {profile.bannerUrl && (
           <div className="absolute inset-0">
-            <Image src={profile.bannerUrl} alt="" fill priority className="object-cover opacity-15" />
+            <Image
+              src={profile.bannerUrl}
+              alt=""
+              fill
+              priority
+              // The section is md+ only and capped at max-w-7xl (1280px).
+              sizes="(max-width: 1280px) 100vw, 1280px"
+              className="object-cover opacity-15"
+            />
             <div className="absolute inset-0 bg-gradient-to-r from-surface-low via-surface-low/90 to-surface-low/60" />
           </div>
         )}

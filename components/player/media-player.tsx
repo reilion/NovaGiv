@@ -678,6 +678,11 @@ export function MediaPlayer({
                             alt=""
                             fill
                             sizes="128px"
+                            // ok.ru already serves these as small JPEGs and a
+                            // series lists dozens of them: optimizing each one
+                            // would spend a transformation for no real gain.
+                            unoptimized
+                            loading="lazy"
                             className="object-cover"
                           />
                         ) : (

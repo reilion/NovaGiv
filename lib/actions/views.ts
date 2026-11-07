@@ -1,11 +1,27 @@
 "use server";
 
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 
 import { rateLimit, type RateLimitRule } from "@/lib/rate-limit";
 import { clientIp } from "@/lib/request-ip";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+
+/**
+ * The signed-in viewer's id, or null. Skips the round trip to the auth server
+ * when there is no session cookie at all, which is most plays.
+ */
+async function viewerId(): Promise<string | null> {
+  const cookieStore = await cookies();
+  if (!cookieStore.getAll().some(({ name }) => name.startsWith("sb-"))) return null;
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  return user?.id ?? null;
+}
 
 /**
  * Plays one address may count. The player already refuses to count the same
@@ -37,7 +53,8 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  *
  * Goes through the `register_video_view` function instead of an update: the
  * public site is anonymous, and RLS lets it read the catalog but not write to
- * it. The function is the one narrow exception (see supabase/schema.sql).
+ * it. The function is the one narrow exception, and only the service role may
+ * call it (see supabase/schema.sql).
  *
  * `episodeId` omitted = the collection's own video (movie, karaoke, especial).
  */
@@ -58,12 +75,21 @@ export async function registerVideoView(mediaItemId: string, episodeId?: string)
     return;
   }
 
-  const supabase = await createClient();
-  const { error } = await supabase.rpc("register_video_view", {
-    p_media_item_id: mediaItemId,
-    p_episode_id: episodeId ?? null,
-  });
+  // The function is executable by service_role only (see supabase/schema.sql),
+  // so the budget above cannot be skipped by calling it through PostgREST with
+  // the public anon key. The viewer is resolved here, from the session cookie,
+  // and never taken from the caller.
+  try {
+    const { error } = await createAdminClient().rpc("register_video_view", {
+      p_media_item_id: mediaItemId,
+      p_episode_id: episodeId ?? null,
+      p_user_id: await viewerId(),
+    });
 
-  // A lost view is not worth failing the page over — the video is already playing.
-  if (error) console.error("registerVideoView error —", error.message);
+    // A lost view is not worth failing the page over — the video is already playing.
+    if (error) console.error("registerVideoView error —", error.message);
+  } catch (error) {
+    // Most likely SUPABASE_SERVICE_ROLE_KEY missing from the environment.
+    console.error("registerVideoView —", error instanceof Error ? error.message : error);
+  }
 }

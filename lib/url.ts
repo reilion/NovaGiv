@@ -9,16 +9,37 @@ export function loginPath(next?: string): string {
   return target ? `/login?next=${encodeURIComponent(target)}` : "/login";
 }
 
+/** A throwaway origin to resolve against: anything that leaves it was not a path. */
+const PROBE_ORIGIN = "http://redirect.invalid";
+
 /**
- * Sanitizes a `?next=` value before redirecting to it. Anything that is not a
- * plain in-site path — an absolute URL, a protocol-relative `//evil.com`, a
- * backslash Windows and some browsers normalize into one — is dropped, so the
- * login form can never be turned into an open redirect.
+ * Sanitizes a `?next=` value before redirecting to it, so the login form and
+ * the email links can never be turned into an open redirect.
+ *
+ * Checking prefixes is not enough: the URL parser browsers use strips tabs and
+ * newlines, so `/\t/evil.com` passes a "starts with / but not //" test and then
+ * lands on `//evil.com`. Instead the value is resolved the way a browser would
+ * and must stay on the same origin; what comes back is the normalized path, not
+ * the raw input.
  */
 export function safeRedirectPath(value: string | undefined | null): string | null {
   if (!value || !value.startsWith("/")) return null;
-  if (value.startsWith("//") || value.startsWith("/\\")) return null;
-  return value;
+  // Control characters and backslashes have no business in one of our paths,
+  // and both are what browsers "repair" into something else.
+  if (/[\u0000-\u001F\u007F\\]/.test(value)) return null;
+
+  let url: URL;
+  try {
+    url = new URL(value, PROBE_ORIGIN);
+  } catch {
+    return null;
+  }
+
+  if (url.origin !== PROBE_ORIGIN) return null;
+
+  const path = `${url.pathname}${url.search}${url.hash}`;
+  // Belt and braces: a normalized path can never start with `//` and still be ours.
+  return path.startsWith("//") ? null : path;
 }
 
 /**

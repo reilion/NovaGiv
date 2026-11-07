@@ -396,17 +396,30 @@ $$;
 
 -- Counting a play is the only write the public site makes, and the policies
 -- above only let an authenticated admin write. This function is the exception:
--- security definer, so an anonymous visitor can bump exactly one counter by one
--- and touch nothing else. Views of a draft are ignored, matching the read
--- policies — a collection only starts counting once it is public.
-create or replace function register_video_view(p_media_item_id uuid, p_episode_id uuid default null)
+-- security definer, so it can bump exactly one counter by one and touch nothing
+-- else. Views of a draft are ignored, matching the read policies — a collection
+-- only starts counting once it is public.
+--
+-- Executable by service_role ONLY. It used to be granted to anon, which made it
+-- callable straight through PostgREST with the public anon key — skipping the
+-- per-address budget in lib/actions/views.ts and letting a loop inflate any
+-- counter. Now the server action is the only way in: it applies that budget,
+-- resolves the session itself, and passes the viewer as p_user_id (null for a
+-- visitor). auth.uid() is not used here because a service-role call has none.
+drop function if exists register_video_view(uuid, uuid);
+
+create or replace function register_video_view(
+  p_media_item_id uuid,
+  p_episode_id uuid default null,
+  p_user_id uuid default null
+)
 returns void
 language plpgsql
 security definer
 set search_path = public
 as $$
 declare
-  v_user uuid := auth.uid();
+  v_user uuid := p_user_id;
   v_published boolean;
   v_ref text;
 begin
@@ -427,8 +440,7 @@ begin
   end if;
 
   -- Anonymous plays only move the counter; there is nobody to remember them
-  -- for. auth.uid() still reports the caller inside a security definer
-  -- function, so this is the signed-in half of the same round trip.
+  -- for. A signed-in play also moves the collection up their history.
   if v_user is null then
     return;
   end if;
@@ -444,8 +456,8 @@ begin
 end;
 $$;
 
-revoke all on function register_video_view(uuid, uuid) from public;
-grant execute on function register_video_view(uuid, uuid) to anon, authenticated;
+revoke all on function register_video_view(uuid, uuid, uuid) from public, anon, authenticated;
+grant execute on function register_video_view(uuid, uuid, uuid) to service_role;
 
 -- ---------------------------------------------------------------------------
 -- Likes

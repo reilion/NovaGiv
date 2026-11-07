@@ -468,7 +468,9 @@ volumen.
 
 Ambos son la excepción a "el sitio público no escribe", y cada uno por una vía distinta:
 
-- **Vistas** — `register_video_view`, `security definer`, ejecutable por anónimos. Una vista
+- **Vistas** — `register_video_view`, `security definer`, ejecutable **solo por `service_role`**:
+  la server action la llama con la clave de servicio tras aplicar el presupuesto por IP, de
+  modo que no se puede invocar directamente por PostgREST con la anon key. Una vista
   es "abierto en el reproductor" (el iframe de ok.ru nunca informa si se reprodujo de verdad),
   y el cliente la marca en `sessionStorage` para contarla una sola vez por sesión. Esa marca
   vive en el navegador, así que la acción además tiene presupuesto propio por dirección

@@ -2,6 +2,7 @@
 
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
+import { isOptionalUuid, isUuid } from "@/lib/validation/ids";
 
 export interface LikeResult {
   liked: boolean;
@@ -30,6 +31,9 @@ export async function toggleVideoLike(
 ): Promise<LikeResult> {
   if (!isSupabaseConfigured) {
     return { liked: false, likes: 0, error: "El catálogo todavía no está conectado." };
+  }
+  if (!isUuid(mediaItemId) || !isOptionalUuid(episodeId)) {
+    return { liked: false, likes: 0, error: "Video no válido." };
   }
 
   const supabase = await createClient();

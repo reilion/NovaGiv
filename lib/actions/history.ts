@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
+import { isUuid } from "@/lib/validation/ids";
 
 /**
  * Drops one collection from the account's history — "quitar de Seguir viendo".
@@ -14,6 +15,7 @@ import { createClient } from "@/lib/supabase/server";
  */
 export async function removeFromHistory(mediaItemId: string): Promise<{ error?: string }> {
   if (!isSupabaseConfigured) return { error: "El catálogo todavía no está conectado." };
+  if (!isUuid(mediaItemId)) return { error: "Colección no válida." };
 
   const supabase = await createClient();
   const { error } = await supabase.from("watch_history").delete().eq("media_item_id", mediaItemId);

@@ -3,7 +3,7 @@
 > Fecha: 2026-11-07 · Alcance: todo el repositorio (`app/`, `components/`, `lib/`, `proxy.ts`, `next.config.ts`, `supabase/schema.sql`, `scripts/`).
 > Stack: Next.js 16.2 (App Router) · React 19.2 · Supabase (SSR + RLS) · Vercel.
 >
-> Marca cada tarea con `[x]` al completarla. Los IDs (`SEC-1`, `COST-2`…) sirven para referirse a ellas.
+> Marca cada tarea con `[x]` al completarla (`[~]` = código hecho, falta un paso manual). Los IDs (`SEC-1`, `COST-2`…) sirven para referirse a ellas.
 
 ## Resumen
 
@@ -121,17 +121,20 @@
     ```
     Una CSP completa (`script-src` con nonce) puede venir después; empezar con las directivas de arriba no rompe nada.
 
-- [ ] **SEC-4 · [MEDIO] El rate limit vive en la memoria de cada instancia**
+- [~] **SEC-4 · [MEDIO] El rate limit vive en la memoria de cada instancia**
+  - **Estado (fase 2):** login, registro, reset y vistas cuentan ahora en Postgres (`rate_limit_hit` en `supabase/schema.sql`, `lib/rate-limit-shared.ts`), compartido entre instancias; si la tabla falta o Supabase no responde, vuelve al contador en memoria. **Pendiente:** ejecutar el SQL; el presupuesto por página del proxy sigue en memoria a propósito → configurar una regla de rate limit en el **Vercel Firewall** (dashboard) para cubrirlo.
   - `lib/rate-limit.ts` (lo usan `lib/bot-guard.ts`, `lib/actions/auth.ts` y `lib/actions/views.ts`).
   - **Por qué:** en Vercel (Fluid) hay varias instancias, que se reciclan; cada una lleva su propio conteo y lo pierde en un arranque en frío. El límite real es «N × instancias» y se reinicia al azar. Turnstile mitiga el login, pero no el registro de vistas ni el bot guard.
   - **Solución:** el propio archivo lo prevé: cambiar la implementación por Upstash Redis (`@upstash/ratelimit`, gratuito en Vercel Marketplace) o una tabla de Supabase. También se puede activar el **Firewall de Vercel** (reglas de rate limit por ruta, gratis en Hobby) para `/login`, `/register`, `/recuperar`.
 
-- [ ] **SEC-5 · [MEDIO] Las acciones de admin no validan la entrada con un esquema**
+- [x] **SEC-5 · [MEDIO] Las acciones de admin no validan la entrada con un esquema**
+  - **Hecho (fase 2):** `lib/validation/media-input.ts` (Zod) valida todo `MediaFormInput` dentro de `writeMediaItem` (póster contra `lib/image-hosts.ts`, embeds solo `ok.ru/videoembed/…`, límites de longitud); probado contra las 191 colecciones publicadas (0 rechazos). `sandbox` en el iframe, verificado con Chrome real reproduciendo un vídeo de ok.ru.
   - `lib/actions/media.ts:15` (`upsertMediaItem(input: MediaFormInput)`), `lib/media-write.ts:163`, `lib/actions/channel-collections.ts`.
   - **Por qué:** los tipos de TypeScript no existen en runtime; una Server Action recibe lo que envíe el cliente. `posterUrl`, `okRuEmbedUrl`, `genres`, `rating`, `status` y `episodes[]` llegan sin validar: un póster de un host no permitido rompe `next/image` en el catálogo, y un `okRuEmbedUrl` que no sea de ok.ru acaba como `src` de un `<iframe>` público.
   - **Solución:** esquema Zod para `MediaFormInput` (`posterUrl` con host en lista blanca, `okRuEmbedUrl` que empiece por `https://ok.ru/videoembed/`, límites de longitud, `episodes.max(1000)`) y `schema.parse(input)` al inicio de cada acción. Añadir `sandbox="allow-scripts allow-same-origin allow-presentation"` al `<iframe>` del reproductor (`components/player/media-player.tsx:316`) como defensa adicional.
 
-- [ ] **SEC-6 · [BAJO] Las acciones de usuario no validan los ids**
+- [x] **SEC-6 · [BAJO] Las acciones de usuario no validan los ids**
+  - **Hecho (fase 2):** `lib/validation/ids.ts`, usado en likes, ver después, historial, vistas y en borrar/publicar de admin.
   - `lib/actions/likes.ts`, `watch-later.ts`, `history.ts` aceptan cualquier string (Postgres los rechaza, pero se gasta una invocación y un viaje a la BD). **Solución:** reutilizar la validación `UUID` de `lib/actions/views.ts`.
 
 - [ ] **SEC-7 · [BAJO] `getSiteUrl()` se fía de `x-forwarded-host` si falta `SITE_URL`**
@@ -151,7 +154,8 @@
 
 ## 3. Arquitectura y rendimiento (App Router)
 
-- [ ] **ARQ-1 · [ALTO] Escritura no atómica de colecciones: se pueden perder episodios**
+- [~] **ARQ-1 · [ALTO] Escritura no atómica de colecciones: se pueden perder episodios**
+  - **Estado (fase 2):** `save_media_item` (SQL, una transacción) sustituye los pasos sueltos de `writeMediaItem`; `seedMockData` usa la misma vía. **Pendiente:** ejecutar el SQL. `extractEpisodeToCollection` sigue haciendo dos guardados (crear + origen): si el segundo falla queda un duplicado (no hay pérdida), el mensaje ya lo explica.
   - `lib/media-write.ts:228-245` (`writeMediaItem`: borra todos los episodios → los inserta) y `lib/actions/media.ts:83-85` (`seedMockData`).
   - **Por qué:** son llamadas separadas a PostgREST, sin transacción. Si el `insert` falla (constraint, timeout, datos inválidos), la colección queda **sin episodios** y los contadores de vistas se pierden. Lo mismo pasa entre el `update` de `media_items` y la gestión de episodios.
   - **Solución:** mover la escritura a una función SQL `save_media_item(p_item jsonb, p_episodes jsonb)` que haga `update/insert` + `delete` + `insert` dentro de una transacción (las funciones plpgsql son atómicas) y llamarla con `supabase.rpc`.

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
+import { isEpisodeRef, isOptionalUuid, isUuid } from "@/lib/validation/ids";
 
 export interface WatchLaterResult {
   saved: boolean;
@@ -27,6 +28,9 @@ export async function toggleWatchLater(
 ): Promise<WatchLaterResult> {
   if (!isSupabaseConfigured) {
     return { saved: false, error: "El catálogo todavía no está conectado." };
+  }
+  if (!isUuid(mediaItemId) || !isOptionalUuid(episodeId)) {
+    return { saved: false, error: "Video no válido." };
   }
 
   const supabase = await createClient();
@@ -64,6 +68,9 @@ export async function removeFromWatchLater(
   episodeRef?: string
 ): Promise<{ error?: string }> {
   if (!isSupabaseConfigured) return { error: "El catálogo todavía no está conectado." };
+  if (!isUuid(mediaItemId) || (episodeRef !== undefined && !isEpisodeRef(episodeRef))) {
+    return { error: "Video no válido." };
+  }
 
   const supabase = await createClient();
   const query = supabase.from("watch_later").delete().eq("media_item_id", mediaItemId);

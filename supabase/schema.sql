@@ -1251,3 +1251,258 @@ $$;
 
 revoke all on function public.catalog_facets() from public;
 grant execute on function public.catalog_facets() to anon, authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Saving a collection (admin)
+-- ---------------------------------------------------------------------------
+-- Everything the admin form writes for one collection, in ONE transaction: the
+-- item row, the full replacement of its episode list (carrying each video's
+-- plays over by its ok.ru URL), and the release of episodes claimed from other
+-- collections of the same channel, with their stream ranges rebuilt.
+--
+-- It used to be five or six separate PostgREST calls from lib/media-write.ts,
+-- so a failed insert after the delete left a collection with no episodes and
+-- its counters gone. A plpgsql function is atomic: any error rolls all of it
+-- back, and the caller gets the error (unique violations keep their
+-- constraint name, which lib/media-write.ts turns into a readable message).
+--
+-- security invoker on purpose: it runs with the caller's rights, so the admin
+-- write policies above still decide, and the explicit check below just fails
+-- with a clear message instead of "0 rows".
+--
+-- p_item: the media_items columns as JSON (title, slug, type, poster_url,
+--   genres, year, description, duration, okru_embed_url, status, rating,
+--   published, first_streamed_at, last_streamed_at, and optionally created_at
+--   for a new row). okru_channel_id / _name / _url are applied only when the
+--   key "okru_channel_id" is present, so a write that does not manage the link
+--   cannot wipe it.
+-- p_episodes: [{ episode_number, season_number, title, okru_embed_url,
+--   duration, thumbnail_url, streamed_at }], already normalized.
+-- p_claimed: ids of episode rows in OTHER collections that now live here.
+create or replace function public.save_media_item(
+  p_id uuid,
+  p_item jsonb,
+  p_episodes jsonb default '[]'::jsonb,
+  p_claimed uuid[] default '{}'
+)
+returns uuid
+language plpgsql
+security invoker
+set search_path = public
+as $$
+declare
+  v_id uuid := p_id;
+  v_manage_channel boolean := p_item ? 'okru_channel_id';
+  v_channel text := nullif(p_item->>'okru_channel_id', '');
+  v_primary boolean;
+  v_affected uuid[];
+  v_target uuid;
+  v_views jsonb;
+begin
+  if not public.is_admin() then
+    raise exception 'Solo un administrador puede guardar colecciones.' using errcode = '42501';
+  end if;
+
+  -- The first collection linked to a channel becomes its primary (the one the
+  -- sync appends to); anything linked afterwards is derived.
+  if v_manage_channel then
+    v_primary := v_channel is not null and not exists (
+      select 1 from media_items
+      where okru_channel_id = v_channel
+        and okru_channel_primary
+        and id is distinct from v_id
+    );
+  end if;
+
+  if v_id is not null then
+    update media_items set
+      title = p_item->>'title',
+      slug = p_item->>'slug',
+      type = p_item->>'type',
+      poster_url = p_item->>'poster_url',
+      genres = coalesce(array(select jsonb_array_elements_text(p_item->'genres')), '{}'),
+      year = (p_item->>'year')::int,
+      description = p_item->>'description',
+      duration = p_item->>'duration',
+      okru_embed_url = p_item->>'okru_embed_url',
+      status = p_item->>'status',
+      rating = (p_item->>'rating')::numeric,
+      published = coalesce((p_item->>'published')::boolean, true),
+      first_streamed_at = (p_item->>'first_streamed_at')::timestamp,
+      last_streamed_at = (p_item->>'last_streamed_at')::timestamp,
+      okru_channel_id = case when v_manage_channel then v_channel else okru_channel_id end,
+      okru_channel_name = case when v_manage_channel then p_item->>'okru_channel_name' else okru_channel_name end,
+      okru_channel_url = case when v_manage_channel then p_item->>'okru_channel_url' else okru_channel_url end,
+      okru_channel_primary = case when v_manage_channel then v_primary else okru_channel_primary end
+    where id = v_id;
+
+    if not found then
+      raise exception 'La colección % ya no existe.', v_id using errcode = 'P0002';
+    end if;
+  else
+    insert into media_items (
+      title, slug, type, poster_url, genres, year, description, duration,
+      okru_embed_url, status, rating, published, first_streamed_at,
+      last_streamed_at, okru_channel_id, okru_channel_name, okru_channel_url,
+      okru_channel_primary, created_at
+    ) values (
+      p_item->>'title',
+      p_item->>'slug',
+      p_item->>'type',
+      p_item->>'poster_url',
+      coalesce(array(select jsonb_array_elements_text(p_item->'genres')), '{}'),
+      (p_item->>'year')::int,
+      p_item->>'description',
+      p_item->>'duration',
+      p_item->>'okru_embed_url',
+      p_item->>'status',
+      (p_item->>'rating')::numeric,
+      coalesce((p_item->>'published')::boolean, true),
+      (p_item->>'first_streamed_at')::timestamp,
+      (p_item->>'last_streamed_at')::timestamp,
+      case when v_manage_channel then v_channel end,
+      case when v_manage_channel then p_item->>'okru_channel_name' end,
+      case when v_manage_channel then p_item->>'okru_channel_url' end,
+      coalesce(v_primary, false),
+      coalesce((p_item->>'created_at')::timestamptz, now())
+    )
+    returning id into v_id;
+  end if;
+
+  -- Plays recorded so far for these videos, looked up across the whole table
+  -- (a video pulled in from a sibling arrives with its views) and read before
+  -- the delete below removes the rows that hold them.
+  select coalesce(jsonb_object_agg(t.url, t.views), '{}'::jsonb)
+  into v_views
+  from (
+    select e.okru_embed_url as url, max(e.view_count) as views
+    from episodes e
+    where e.okru_embed_url in (
+      select ep->>'okru_embed_url' from jsonb_array_elements(p_episodes) ep
+    )
+    group by e.okru_embed_url
+  ) t;
+
+  delete from episodes where media_item_id = v_id;
+
+  insert into episodes (
+    media_item_id, episode_number, season_number, title, okru_embed_url,
+    duration, thumbnail_url, streamed_at, view_count
+  )
+  select
+    v_id,
+    (ep->>'episode_number')::int,
+    (ep->>'season_number')::int,
+    ep->>'title',
+    ep->>'okru_embed_url',
+    ep->>'duration',
+    ep->>'thumbnail_url',
+    (ep->>'streamed_at')::timestamp,
+    coalesce((v_views->>(ep->>'okru_embed_url'))::int, 0)
+  from jsonb_array_elements(p_episodes) ep;
+
+  -- Release what was claimed from other collections, then rebuild their ranges.
+  if coalesce(array_length(p_claimed, 1), 0) > 0 then
+    with removed as (
+      delete from episodes
+      where id = any(p_claimed) and media_item_id <> v_id
+      returning media_item_id
+    )
+    select array_agg(distinct media_item_id) into v_affected from removed;
+
+    foreach v_target in array coalesce(v_affected, '{}') loop
+      update media_items m set
+        first_streamed_at = r.first_at,
+        last_streamed_at = r.last_at
+      from (
+        select min(streamed_at) as first_at, max(streamed_at) as last_at
+        from episodes where media_item_id = v_target
+      ) r
+      where m.id = v_target;
+    end loop;
+  end if;
+
+  return v_id;
+end;
+$$;
+
+revoke all on function public.save_media_item(uuid, jsonb, jsonb, uuid[]) from public, anon;
+grant execute on function public.save_media_item(uuid, jsonb, jsonb, uuid[]) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Rate limiting (shared across server instances)
+-- ---------------------------------------------------------------------------
+-- The fixed-window counters behind sign-in, sign-up, password reset and view
+-- counting (lib/rate-limit-shared.ts). They used to live only in the memory of
+-- each server instance; on Vercel there are several, recycled at will, so the
+-- real budget was "N times however many instances" and reset on every cold
+-- start. One row per key here is the same counter for all of them.
+--
+-- Nobody but the server touches this: RLS on with no policies, and the
+-- functions are granted to service_role only.
+create table if not exists rate_limits (
+  key text primary key,
+  count int not null,
+  reset_at timestamptz not null
+);
+
+alter table rate_limits enable row level security;
+
+create index if not exists rate_limits_reset_at_idx on rate_limits (reset_at);
+
+-- Counts one attempt against p_key and answers whether it fits in the budget,
+-- in a single atomic upsert: two requests at the same instant cannot both read
+-- "count = 4" and both be let through.
+create or replace function public.rate_limit_hit(
+  p_key text,
+  p_limit int,
+  p_window_seconds int
+)
+returns table (allowed boolean, remaining int, retry_after_seconds int)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_count int;
+  v_reset timestamptz;
+begin
+  insert into rate_limits as r (key, count, reset_at)
+  values (p_key, 1, now() + make_interval(secs => p_window_seconds))
+  on conflict (key) do update set
+    count = case when r.reset_at <= now() then 1 else r.count + 1 end,
+    reset_at = case
+      when r.reset_at <= now() then now() + make_interval(secs => p_window_seconds)
+      else r.reset_at
+    end
+  returning r.count, r.reset_at into v_count, v_reset;
+
+  -- Now and then, sweep windows that ended a while ago, so the table stays the
+  -- size of the traffic of the last hour rather than of all time.
+  if random() < 0.01 then
+    delete from rate_limits where reset_at < now() - interval '1 hour';
+  end if;
+
+  allowed := v_count <= p_limit;
+  remaining := greatest(0, p_limit - v_count);
+  retry_after_seconds := case
+    when allowed then 0
+    else greatest(1, ceil(extract(epoch from (v_reset - now())))::int)
+  end;
+  return next;
+end;
+$$;
+
+create or replace function public.rate_limit_forget(p_key text)
+returns void
+language sql
+security definer
+set search_path = public
+as $$
+  delete from rate_limits where key = p_key;
+$$;
+
+revoke all on function public.rate_limit_hit(text, int, int) from public, anon, authenticated;
+revoke all on function public.rate_limit_forget(text) from public, anon, authenticated;
+grant execute on function public.rate_limit_hit(text, int, int) to service_role;
+grant execute on function public.rate_limit_forget(text) to service_role;

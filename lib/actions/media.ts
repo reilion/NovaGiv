@@ -4,8 +4,9 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { requireAdminClient } from "@/lib/auth";
-import { viewCountsByEmbedUrl, writeMediaItem } from "@/lib/media-write";
+import { writeMediaItem } from "@/lib/media-write";
 import { MOCK_MEDIA } from "@/lib/mock-data";
+import { isUuid } from "@/lib/validation/ids";
 import type { MediaFormInput } from "@/types/media";
 
 export interface ActionResult {
@@ -25,6 +26,7 @@ export async function upsertMediaItem(input: MediaFormInput): Promise<ActionResu
 
 export async function deleteMediaItem(id: string): Promise<ActionResult> {
   const supabase = await requireAdminClient();
+  if (!isUuid(id)) return { error: "Id de colección no válido." };
 
   const { error } = await supabase.from("media_items").delete().eq("id", id);
   if (error) return { error: error.message };
@@ -36,6 +38,7 @@ export async function deleteMediaItem(id: string): Promise<ActionResult> {
 
 export async function togglePublished(id: string, published: boolean): Promise<ActionResult> {
   const supabase = await requireAdminClient();
+  if (!isUuid(id) || typeof published !== "boolean") return { error: "Datos no válidos." };
 
   const { error } = await supabase.from("media_items").update({ published }).eq("id", id);
   if (error) return { error: error.message };
@@ -62,62 +65,39 @@ export async function seedMockData(): Promise<ActionResult> {
 
     if (lookupError) return { error: lookupError.message };
 
-    const row = {
-      title: item.title,
-      slug: item.slug,
-      type: item.type,
-      poster_url: item.posterUrl,
-      genres: item.genres,
-      year: item.year ?? null,
-      description: item.description ?? null,
-      duration: item.duration ?? null,
-      okru_embed_url: item.okRuEmbedUrl ?? null,
-      status: item.status ?? null,
-      rating: item.rating ?? null,
-      published: item.published !== false,
-      first_streamed_at: item.firstStreamedAt ?? null,
-      last_streamed_at: item.lastStreamedAt ?? null,
-      created_at: item.createdAt,
-    };
-
-    let mediaItemId: string;
-
-    // Re-seeding replaces the episode rows, so their counters are carried over
-    // the same way a save from the admin form does it.
-    const carriedViews = await viewCountsByEmbedUrl(
+    // Through the same validated, transactional write as the admin form, so a
+    // re-seed that fails half-way cannot leave a title without its episodes.
+    // Counters are carried over by ok.ru URL inside it, as on any save.
+    const result = await writeMediaItem(
       supabase,
-      (item.episodes ?? []).map((episode) => episode.okRuEmbedUrl)
+      {
+        id: (existing?.id as string | undefined) ?? undefined,
+        title: item.title,
+        slug: item.slug,
+        type: item.type,
+        posterUrl: item.posterUrl,
+        genres: item.genres,
+        year: item.year,
+        description: item.description,
+        duration: item.duration,
+        okRuEmbedUrl: item.okRuEmbedUrl,
+        status: item.status,
+        rating: item.rating,
+        published: item.published !== false,
+        streamedAt: item.lastStreamedAt,
+        episodes: (item.episodes ?? []).map((episode) => ({
+          seasonNumber: episode.seasonNumber,
+          episodeNumber: episode.episodeNumber,
+          title: episode.title,
+          okRuEmbedUrl: episode.okRuEmbedUrl,
+          duration: episode.duration,
+          streamedAt: episode.streamedAt,
+        })),
+      },
+      { createdAt: item.createdAt }
     );
 
-    if (existing) {
-      mediaItemId = existing.id as string;
-      const { error } = await supabase.from("media_items").update(row).eq("id", mediaItemId);
-      if (error) return { error: error.message };
-      await supabase.from("episodes").delete().eq("media_item_id", mediaItemId);
-    } else {
-      const { data, error } = await supabase
-        .from("media_items")
-        .insert(row)
-        .select("id")
-        .single();
-      if (error || !data) return { error: error?.message ?? `No se pudo crear "${item.title}".` };
-      mediaItemId = data.id as string;
-    }
-
-    if (item.episodes?.length) {
-      const episodeRows = item.episodes.map((episode) => ({
-        media_item_id: mediaItemId,
-        episode_number: episode.episodeNumber,
-        season_number: episode.seasonNumber ?? null,
-        title: episode.title,
-        okru_embed_url: episode.okRuEmbedUrl,
-        duration: episode.duration ?? null,
-        streamed_at: episode.streamedAt ?? null,
-        view_count: carriedViews.get(episode.okRuEmbedUrl) ?? 0,
-      }));
-      const { error } = await supabase.from("episodes").insert(episodeRows);
-      if (error) return { error: error.message };
-    }
+    if (result.error) return { error: `"${item.title}": ${result.error}` };
   }
 
   revalidatePath("/");

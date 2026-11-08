@@ -11,13 +11,8 @@ import {
   validateUsername,
 } from "@/lib/account";
 import { findAccountByUsername, isUsernameTaken } from "@/lib/auth";
-import {
-  forgetRateLimit,
-  rateLimit,
-  retryAfterMessage,
-  type RateLimitRule,
-  type RateLimitVerdict,
-} from "@/lib/rate-limit";
+import { retryAfterMessage, type RateLimitRule, type RateLimitVerdict } from "@/lib/rate-limit";
+import { forgetSharedRateLimit, sharedRateLimit } from "@/lib/rate-limit-shared";
 import { clientIp } from "@/lib/request-ip";
 import { getSiteUrl } from "@/lib/site-url";
 import { isSupabaseConfigured, NO_SUPABASE_ERROR } from "@/lib/supabase/config";
@@ -105,10 +100,12 @@ export async function signIn(
   const address = await callerAddress();
   const usernameKey = `signin:user:${username}`;
 
-  const blocked = firstBlocked([
-    address ? rateLimit(`signin:ip:${address}`, SIGN_IN_PER_IP) : null,
-    rateLimit(usernameKey, SIGN_IN_PER_USERNAME),
-  ]);
+  const blocked = firstBlocked(
+    await Promise.all([
+      address ? sharedRateLimit(`signin:ip:${address}`, SIGN_IN_PER_IP) : null,
+      sharedRateLimit(usernameKey, SIGN_IN_PER_USERNAME),
+    ])
+  );
   if (blocked) return { error: retryAfterMessage(blocked.retryAfterSeconds) };
 
   // Ahead of the lookup below on purpose. That one runs with the service-role
@@ -133,7 +130,7 @@ export async function signIn(
   // own password: holding them against the account would be locking a person
   // out of one they just proved is theirs. The per-address count stays — that
   // one is not about the account.
-  forgetRateLimit(usernameKey);
+  await forgetSharedRateLimit(usernameKey);
 
   revalidatePath("/", "layout");
   redirect(destinationFor(account.role, typeof next === "string" ? next : null));
@@ -164,7 +161,7 @@ export async function signUp(
   // budget, and before the first round trip to the database.
   const address = await callerAddress();
   if (address) {
-    const verdict = rateLimit(`signup:ip:${address}`, SIGN_UP_PER_IP);
+    const verdict = await sharedRateLimit(`signup:ip:${address}`, SIGN_UP_PER_IP);
     if (!verdict.allowed) return { error: TOO_MANY_SIGN_UPS };
   }
 
@@ -262,10 +259,12 @@ export async function requestPasswordReset(
   }
 
   const address = await callerAddress();
-  const blocked = firstBlocked([
-    address ? rateLimit(`reset:ip:${address}`, RESET_PER_IP) : null,
-    rateLimit(`reset:account:${key}`, RESET_PER_ACCOUNT),
-  ]);
+  const blocked = firstBlocked(
+    await Promise.all([
+      address ? sharedRateLimit(`reset:ip:${address}`, RESET_PER_IP) : null,
+      sharedRateLimit(`reset:account:${key}`, RESET_PER_ACCOUNT),
+    ])
+  );
   if (blocked) return { error: retryAfterMessage(blocked.retryAfterSeconds) };
 
   const captcha = await verifyTurnstile(formData.get(TURNSTILE_FIELD), "recover");

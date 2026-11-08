@@ -321,6 +321,13 @@ export function MediaPlayer({
             }
             allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
             allowFullScreen
+            // Defence in depth: the embed URL is checked when saved (it must be
+            // ok.ru/videoembed/…), and the sandbox limits what the frame could
+            // do even if something else slipped through — no top-level
+            // navigation of this page, no forms, no downloads. Popups stay
+            // allowed so ok.ru's own "watch on ok.ru" link still opens.
+            // Checked against the real ok.ru player: it plays the same with it.
+            sandbox="allow-scripts allow-same-origin allow-presentation allow-popups allow-popups-to-escape-sandbox"
             className="absolute inset-0 size-full"
           />
         ) : (

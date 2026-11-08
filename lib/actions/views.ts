@@ -2,11 +2,13 @@
 
 import { cookies, headers } from "next/headers";
 
-import { rateLimit, type RateLimitRule } from "@/lib/rate-limit";
+import type { RateLimitRule } from "@/lib/rate-limit";
+import { sharedRateLimit } from "@/lib/rate-limit-shared";
 import { clientIp } from "@/lib/request-ip";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { isOptionalUuid, isUuid } from "@/lib/validation/ids";
 
 /**
  * The signed-in viewer's id, or null. Skips the round trip to the auth server
@@ -36,9 +38,6 @@ async function viewerId(): Promise<string | null> {
  */
 const VIEWS_PER_IP: RateLimitRule = { limit: 40, windowMs: 10 * 60_000 };
 
-/** Anything else never named a row, so it is a probe, not a play. */
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 /**
  * Counts one play. Called by the player when a video is shown — ok.ru's iframe
  * never tells us whether it was actually watched, so "opened in the player" is
@@ -64,11 +63,10 @@ export async function registerVideoView(mediaItemId: string, episodeId?: string)
   // Before the budget, not after: a malformed id is somebody poking at the
   // endpoint, and it should cost them the call rather than cost a real viewer
   // room in a shared one.
-  if (!UUID.test(mediaItemId)) return;
-  if (episodeId !== undefined && !UUID.test(episodeId)) return;
+  if (!isUuid(mediaItemId) || !isOptionalUuid(episodeId)) return;
 
   const address = clientIp(await headers());
-  if (address && !rateLimit(`views:ip:${address}`, VIEWS_PER_IP).allowed) {
+  if (address && !(await sharedRateLimit(`views:ip:${address}`, VIEWS_PER_IP)).allowed) {
     // Silently. There is nothing for the player to do about it — the video is
     // already playing — and an error would only tell whoever is looping this
     // exactly where the limit sits.

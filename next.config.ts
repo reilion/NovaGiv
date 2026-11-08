@@ -1,23 +1,6 @@
 import type { NextConfig } from "next";
 
-type RemotePattern = Exclude<NonNullable<NonNullable<NextConfig["images"]>["remotePatterns"]>[number], URL>;
-
-/**
- * This project's own Supabase host, read from the env rather than allowed as
- * `*.supabase.co`: /_next/image is a public endpoint, and a wildcard would let
- * anybody push images from *any* Supabase project through it — each one a
- * transformation billed to this account.
- */
-function supabaseStoragePattern(): RemotePattern[] {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  if (!url) return [];
-  try {
-    const { hostname } = new URL(url);
-    return [{ protocol: "https", hostname, pathname: "/storage/v1/object/public/**" }];
-  } catch {
-    return [];
-  }
-}
+import { imageHostPatterns } from "./lib/image-hosts";
 
 /**
  * Applied to every response. `frame-ancestors` (and its older twin,
@@ -64,29 +47,9 @@ const nextConfig: NextConfig = {
     // 30 days. Posters and thumbnails never change at the same URL, so a
     // long TTL just spares re-transforming them once the cache expires.
     minimumCacheTTL: 2_592_000,
-    // Exact hosts and paths only — no wildcards. Every pattern here is a door
-    // through which a third party can spend this site's transformation quota,
-    // so each is narrowed to the paths the catalog's posters actually use
-    // (checked against the published rows). A poster from anywhere else needs
-    // its pattern added here, or it will not render.
-    remotePatterns: [
-      ...supabaseStoragePattern(),
-      // Demo catalog (lib/mock-data.ts) and the profile banner.
-      { protocol: "https", hostname: "picsum.photos", pathname: "/seed/**" },
-      // ok.ru channel/video thumbnails, used as the poster of imported collections.
-      { protocol: "https", hostname: "iv.okcdn.ru", pathname: "/videoPreview" },
-      { protocol: "https", hostname: "iv.okcdn.ru", pathname: "/i" },
-      { protocol: "https", hostname: "i.mycdn.me", pathname: "/image" },
-      // IMDb posters.
-      { protocol: "https", hostname: "m.media-amazon.com", pathname: "/images/**" },
-      // TMDB posters.
-      { protocol: "https", hostname: "image.tmdb.org", pathname: "/t/p/**" },
-      // AniList covers.
-      { protocol: "https", hostname: "s4.anilist.co", pathname: "/file/anilistcdn/**" },
-      // MyAnimeList covers (and its "no image" placeholder under /s/common).
-      { protocol: "https", hostname: "cdn.myanimelist.net", pathname: "/images/**" },
-      { protocol: "https", hostname: "cdn.myanimelist.net", pathname: "/s/common/**" },
-    ],
+    // Exact hosts and paths only, shared with the admin's poster check — see
+    // lib/image-hosts.ts for why there are no wildcards.
+    remotePatterns: imageHostPatterns(),
   },
 };
 

@@ -25,6 +25,9 @@ export async function SiteHeader() {
           <Suspense fallback={null}>
             <HeaderNav />
           </Suspense>
+          <span className="hidden whitespace-nowrap text-xs text-muted-foreground/50 xl:block">
+            Pagina Web creado por <CreditLink />
+          </span>
           {/* Phones: just the word, next to the logo — the title of the
               stream lives in the catalog's live card. */}
           {profile.isLive && (
@@ -39,6 +42,10 @@ export async function SiteHeader() {
             </a>
           )}
         </div>
+
+        <p className="min-w-0 flex-1 text-balance text-center text-[10px] leading-tight text-muted-foreground/50 sm:text-xs xl:hidden">
+          Pagina Web creado por <CreditLink />
+        </p>
 
         <div className="flex shrink-0 items-center gap-1 sm:gap-3">
           {profile.isLive && (
@@ -73,6 +80,19 @@ export async function SiteHeader() {
       </div>
       <div className="h-px w-full bg-gradient-to-r from-transparent via-primary/40 to-transparent" />
     </header>
+  );
+}
+
+function CreditLink() {
+  return (
+    <a
+      href="https://www.twitch.tv/sangatsuchou"
+      target="_blank"
+      rel="noopener noreferrer"
+      className="font-medium text-primary/80 transition-colors hover:text-primary hover:underline"
+    >
+      SangatsuChou
+    </a>
   );
 }
 

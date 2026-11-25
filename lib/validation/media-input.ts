@@ -66,6 +66,15 @@ const episodeSchema = z.object({
   claimedFromEpisodeId: z.uuid().optional(),
 });
 
+/** Carried through unchanged — see CutEpisode. The form never edits these. */
+const cutEpisodeSchema = z.object({
+  seasonNumber: optionalNumber(z.number().int().min(1).max(100)),
+  episodeNumber: z.number().int().min(0).max(100_000),
+  title: z.string().trim().min(1).max(300),
+  cutToTitle: z.string().trim().min(1).max(300),
+  cutToMediaItemId: z.uuid().optional(),
+});
+
 const channelSchema = z.object({
   id: z.string().trim().min(1).max(64),
   name: z.string().trim().min(1).max(300),
@@ -109,6 +118,7 @@ export const mediaFormInputSchema = z.object({
   episodes: z.array(episodeSchema).max(2000, "Demasiados episodios en una sola colección."),
   streamedAt: streamDate,
   okruChannel: channelSchema.nullable().optional(),
+  cutEpisodes: z.array(cutEpisodeSchema).max(2000).optional(),
 });
 
 /**

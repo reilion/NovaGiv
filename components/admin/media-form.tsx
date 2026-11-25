@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CalendarSearch, ListOrdered, Plus, Scissors, Trash2 } from "lucide-react";
 
@@ -152,6 +153,16 @@ export function MediaForm({ item, initialValues, genreOptions = [] }: MediaFormP
     return formatStreamRange(dates[0], dates[dates.length - 1]);
   }, [episodes]);
 
+  // Read-only: a cut only ever happens through the extract dialog, which
+  // redirects away from this page, so nothing here ever writes to this list.
+  const cutEpisodes = useMemo(
+    () =>
+      [...(item?.cutEpisodes ?? [])].sort(
+        (a, b) => (a.seasonNumber ?? 0) - (b.seasonNumber ?? 0) || a.episodeNumber - b.episodeNumber
+      ),
+    [item?.cutEpisodes]
+  );
+
   function handleTitleChange(value: string) {
     setTitle(value);
     if (!slugTouched) setSlug(slugify(value));
@@ -277,6 +288,7 @@ export function MediaForm({ item, initialValues, genreOptions = [] }: MediaFormP
       streamedAt: episodic ? undefined : streamedAt || undefined,
       published,
       okruChannel,
+      cutEpisodes: item?.cutEpisodes ?? [],
       episodes: episodic
         ? episodes.map((episode) => ({
             seasonNumber: episode.seasonNumber,
@@ -628,6 +640,37 @@ export function MediaForm({ item, initialValues, genreOptions = [] }: MediaFormP
                 </div>
               ))}
             </div>
+
+            {cutEpisodes.length > 0 && (
+              <div className="flex flex-col gap-2">
+                <p className="label-caps text-outline">Episodios cortados de esta colección</p>
+                {cutEpisodes.map((cut, index) => (
+                  <div
+                    key={index}
+                    className="flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-border bg-surface-low p-3 text-sm"
+                  >
+                    <Scissors className="size-4 shrink-0 text-muted-foreground" />
+                    <span className="text-muted-foreground">
+                      {cut.seasonNumber ? `T${cut.seasonNumber} · ` : ""}Ep. {cut.episodeNumber}:{" "}
+                      <span className="text-foreground">{cut.title}</span>
+                    </span>
+                    <Badge variant="secondary">
+                      Cortado a{" "}
+                      {cut.cutToMediaItemId ? (
+                        <Link
+                          href={`/admin/media/${cut.cutToMediaItemId}`}
+                          className="underline underline-offset-2"
+                        >
+                          «{cut.cutToTitle}»
+                        </Link>
+                      ) : (
+                        <>«{cut.cutToTitle}»</>
+                      )}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            )}
 
             <div className="flex flex-wrap items-center gap-2">
               <Button type="button" variant="outline" onClick={addEpisode}>

@@ -464,7 +464,20 @@ export async function getAllGenresForAdmin(): Promise<GenreCount[]> {
   return collectGenres(data as { genres: string[] }[]);
 }
 
-/** Single item by primary key, used by the admin edit form. */
+interface CutEpisodeRow {
+  season_number: number | null;
+  episode_number: number;
+  title: string;
+  cut_to_title: string;
+  cut_to_media_item_id: string | null;
+}
+
+/**
+ * Single item by primary key, used by the admin edit form — the one read that
+ * also surfaces `cutEpisodes` (see CutEpisode in types/media.ts). Every other
+ * query in this file goes through `mapMediaItem`, which never reads that
+ * column, so the bookkeeping stays out of every public response.
+ */
 export async function getMediaItemById(id: string): Promise<MediaItem | null> {
   if (!isSupabaseConfigured) {
     return MOCK_MEDIA.find((item) => item.id === id) ?? null;
@@ -482,7 +495,20 @@ export async function getMediaItemById(id: string): Promise<MediaItem | null> {
     return null;
   }
 
-  return mapMediaItem(data as MediaItemRow);
+  const item = mapMediaItem(data as MediaItemRow);
+  const cutRows = (data as { cut_episodes: CutEpisodeRow[] | null }).cut_episodes ?? [];
+  if (cutRows.length === 0) return item;
+
+  return {
+    ...item,
+    cutEpisodes: cutRows.map((row) => ({
+      seasonNumber: row.season_number ?? undefined,
+      episodeNumber: row.episode_number,
+      title: row.title,
+      cutToTitle: row.cut_to_title,
+      cutToMediaItemId: row.cut_to_media_item_id ?? undefined,
+    })),
+  };
 }
 
 /** Where the person browsing stands on the videos of one collection. */

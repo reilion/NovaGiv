@@ -7,7 +7,13 @@ import { requireAdminClient } from "@/lib/auth";
 import { carryEpisodeViewsToItem, writeMediaItem } from "@/lib/media-write";
 import { toOkRuEmbedUrl } from "@/lib/okru";
 import { slugify } from "@/lib/text";
-import { isEpisodic, type EpisodeInput, type MediaFormInput, type MediaType } from "@/types/media";
+import {
+  isEpisodic,
+  type CutEpisode,
+  type EpisodeInput,
+  type MediaFormInput,
+  type MediaType,
+} from "@/types/media";
 
 /**
  * A single ok.ru channel often mixes unrelated content (a couple of movies, a
@@ -155,6 +161,10 @@ export interface ExtractResult {
  * being a movie sitting in a channel full of unrelated streams. Saves the
  * source collection too (the form's pending edits included) so the video ends
  * up in exactly one place, and lands on the new collection's edit page.
+ *
+ * The episode's row is removed from the source, but not without a trace: a
+ * CutEpisode entry is left in its place, so the admin editing the source
+ * collection later still sees it was deliberately pulled out, and where to.
  */
 export async function extractEpisodeToCollection(
   input: ExtractEpisodeInput
@@ -226,7 +236,18 @@ export async function extractEpisodeToCollection(
   }
 
   const remaining = input.source.episodes.filter((_, index) => index !== input.episodeIndex);
-  const saved = await writeMediaItem(supabase, { ...input.source, episodes: remaining });
+  const cutEpisode: CutEpisode = {
+    seasonNumber: episode.seasonNumber,
+    episodeNumber: episode.episodeNumber,
+    title: episode.title,
+    cutToTitle: title,
+    cutToMediaItemId: created.id,
+  };
+  const saved = await writeMediaItem(supabase, {
+    ...input.source,
+    episodes: remaining,
+    cutEpisodes: [...(input.source.cutEpisodes ?? []), cutEpisode],
+  });
 
   if (saved.error) {
     return {

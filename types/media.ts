@@ -74,6 +74,13 @@ export interface MediaItem {
   views?: number;
   /** Likes of this collection's own video. Episodic ones count on the episodes. */
   likes?: number;
+  /**
+   * Episodes extracted out of this collection into ones of their own. Only
+   * `getMediaItemById` (the admin edit form's fetch) ever populates this —
+   * every other read of a MediaItem leaves it undefined, so it never reaches
+   * the public site.
+   */
+  cutEpisodes?: CutEpisode[];
 }
 
 /**
@@ -177,6 +184,24 @@ export interface EpisodeInput {
   claimedFromEpisodeId?: string;
 }
 
+/**
+ * One episode this collection used to hold, pulled out into a collection of
+ * its own by the extract button — see extractEpisodeToCollection. Kept here
+ * (rather than deleted outright) so the admin editing the source collection
+ * still sees where it went instead of it silently vanishing from the list.
+ * Admin-only bookkeeping: never read by the public site.
+ */
+export interface CutEpisode {
+  seasonNumber?: number;
+  episodeNumber: number;
+  /** The episode's title at the time it was cut. */
+  title: string;
+  /** The new collection's name, as it was called right after the cut. */
+  cutToTitle: string;
+  /** Lets the admin jump to the new collection; absent if it was deleted since. */
+  cutToMediaItemId?: string;
+}
+
 /** Everything the admin form writes for one collection. */
 export interface MediaFormInput {
   id?: string;
@@ -205,6 +230,8 @@ export interface MediaFormInput {
    * the link; undefined leaves whatever is stored untouched.
    */
   okruChannel?: OkRuChannelRef | null;
+  /** Episodes previously extracted out of this collection. Passed through as-is; the form never edits it. */
+  cutEpisodes?: CutEpisode[];
 }
 
 export const MEDIA_TYPE_LABELS: Record<MediaType, string> = {

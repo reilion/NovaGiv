@@ -50,6 +50,11 @@ alter table media_items add column if not exists okru_channel_name text;
 alter table media_items add column if not exists okru_channel_url text;
 alter table media_items add column if not exists okru_channel_primary boolean not null default false;
 alter table media_items add column if not exists view_count int not null default 0;
+-- Episodes extracted out of this collection (see save_media_item and
+-- extractEpisodeToCollection in lib/actions/channel-collections.ts). Admin
+-- bookkeeping only: [{season_number, episode_number, title, cut_to_title,
+-- cut_to_media_item_id}], read only by getMediaItemById.
+alter table media_items add column if not exists cut_episodes jsonb not null default '[]'::jsonb;
 
 -- Runs once, when the flag is introduced: back then every linked collection was
 -- the channel's only one, so all of them are primary. Guarded so a later re-run
@@ -1333,7 +1338,8 @@ begin
       okru_channel_id = case when v_manage_channel then v_channel else okru_channel_id end,
       okru_channel_name = case when v_manage_channel then p_item->>'okru_channel_name' else okru_channel_name end,
       okru_channel_url = case when v_manage_channel then p_item->>'okru_channel_url' else okru_channel_url end,
-      okru_channel_primary = case when v_manage_channel then v_primary else okru_channel_primary end
+      okru_channel_primary = case when v_manage_channel then v_primary else okru_channel_primary end,
+      cut_episodes = coalesce(p_item->'cut_episodes', '[]'::jsonb)
     where id = v_id;
 
     if not found then
@@ -1344,7 +1350,7 @@ begin
       title, slug, type, poster_url, genres, year, description, duration,
       okru_embed_url, status, rating, published, first_streamed_at,
       last_streamed_at, okru_channel_id, okru_channel_name, okru_channel_url,
-      okru_channel_primary, created_at
+      okru_channel_primary, created_at, cut_episodes
     ) values (
       p_item->>'title',
       p_item->>'slug',
@@ -1364,7 +1370,8 @@ begin
       case when v_manage_channel then p_item->>'okru_channel_name' end,
       case when v_manage_channel then p_item->>'okru_channel_url' end,
       coalesce(v_primary, false),
-      coalesce((p_item->>'created_at')::timestamptz, now())
+      coalesce((p_item->>'created_at')::timestamptz, now()),
+      coalesce(p_item->'cut_episodes', '[]'::jsonb)
     )
     returning id into v_id;
   end if;

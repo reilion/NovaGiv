@@ -158,6 +158,16 @@ export async function writeMediaItem(
     item.okru_channel_url = input.okruChannel?.url ?? null;
   }
 
+  // Passed straight through — the form only ever carries this forward from
+  // what it loaded, except extractEpisodeToCollection, which appends to it.
+  item.cut_episodes = (input.cutEpisodes ?? []).map((cut) => ({
+    season_number: cut.seasonNumber ?? null,
+    episode_number: cut.episodeNumber,
+    title: cut.title,
+    cut_to_title: cut.cutToTitle,
+    cut_to_media_item_id: cut.cutToMediaItemId ?? null,
+  }));
+
   const episodes = input.episodes.map((episode) => ({
     episode_number: episode.episodeNumber,
     season_number: episode.seasonNumber ?? null,
